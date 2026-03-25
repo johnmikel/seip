@@ -1,0 +1,15 @@
+{
+  "name": "seip",
+  "version": "0.1.0",
+  "description": "Schema Evolution Intent Protocol — communicate breaking schema changes before they break things.",
+  "type": "module",
+  "bin": { "seip": "./bin/seip.mjs" },
+  "main": "src/index.mjs",
+  "scripts": {
+    "demo": "node examples/full-workflow.mjs"
+  },
+  "keywords": ["seip", "schema", "evolution", "data-contracts", "migration", "breaking-changes"],
+  "author": "JM Regida",
+  "license": "Apache-2.0",
+  "files": ["bin/", "src/", "README.md"]
+}
