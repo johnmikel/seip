@@ -8,21 +8,35 @@ The canonical state lives in `.seip/declarations/*.json`. Git is the source of t
 
 No SEIP-owned server required. No central SEIP database required. The reference implementation assumes the Git and CI infrastructure teams already have.
 
-## Why SEIP
+## What You Get
 
 - CI can distinguish an approved breaking change from an undeclared one.
 - Producer and consumer teams get a shared lifecycle instead of scattered messages and tribal knowledge.
 - Automation can participate through JSON files and `--json` CLI output.
 
+## Why It Matters
+
+Schema coordination usually already exists. The problem is that it is fragmented across pull requests, tickets, chat, and release notes. SEIP adds one shared artifact for the change itself: a declaration that humans, CI, and automation can all inspect.
+
+That makes three useful things possible:
+
+- a CI gate can fail undeclared breaking changes before merge
+- downstream consumers get a clear review and response flow
+- audit history survives beyond transient coordination threads
+
 ## How It Works
 
-The lifecycle diagram source lives in `docs/diagrams/lifecycle.d2`.
+1. Detect a schema diff with `seip diff`.
+2. Create a declaration with `seip create`.
+3. Propose it for review with `seip propose`.
+4. Let CI enforce coverage with `seip validate`.
+5. Record consumer responses and audit history with `seip respond` and `seip log`.
 
-## Canonical Model
+The lifecycle diagram source lives in `docs/diagrams/lifecycle.d2`, and the canonical model diagram source lives in `docs/diagrams/canonical-model.d2`.
 
-The transport and storage model diagram source lives in `docs/diagrams/canonical-model.d2`.
+## Where SEIP Fits
 
-SEIP itself is not a webhook platform. It defines the declaration and lifecycle. Notifications and dashboards can be built around that canonical state.
+SEIP itself is not a webhook platform. It defines the declaration and lifecycle. Notifications, dashboards, and cross-repository coordination can be built around that canonical state.
 
 The current reference CLI is repo-local: it reads and writes declarations where the canonical file is available. Cross-repository synchronization is adapter or workflow territory, not hidden protocol magic.
 
@@ -44,6 +58,15 @@ npx seip validate schema-v1.json schema-v2.json
 ```
 
 The smallest useful adoption wedge is the CI gate. Add `seip validate` first, then introduce declarations and responses once teams see value.
+
+## Who It Helps
+
+SEIP is most useful when:
+
+- one producer schema affects multiple downstream teams
+- breaking impact is not always visible to the producer alone
+- coordination currently depends on scattered conversation
+- teams want stronger governance without introducing a heavyweight platform
 
 ## Example Declaration
 
