@@ -1,0 +1,84 @@
+vars: {
+  d2-config: {
+    sketch: true
+  }
+}
+
+direction: down
+
+primary: {
+  label: "Primary path"
+  direction: right
+  style.fill: "#F0E3F3"
+  style.stroke: "#5A3D5C"
+
+  draft: "DRAFT\n "
+  proposed: "PROPOSED\n "
+  review: "UNDER_REVIEW\n "
+  accepted: "ACCEPTED\n "
+  enforcing: "ENFORCING\n "
+  completed: "COMPLETED\n "
+
+  draft.icon: "icons/declaration.svg"
+  proposed.icon: "icons/diff.svg"
+  review.icon: "icons/review.svg"
+  accepted.icon: "icons/approved.svg"
+  enforcing.icon: "icons/ci.svg"
+  completed.icon: "icons/completed.svg"
+
+  draft.style.fill: "#FFFDFE"
+  proposed.style.fill: "#F9F3FA"
+  review.style.fill: "#F6EEF7"
+  accepted.style.fill: "#F4EBF5"
+  enforcing.style.fill: "#F1E6F3"
+  completed.style.fill: "#EEE0F1"
+
+  draft.style.shadow: true
+  proposed.style.shadow: true
+  review.style.shadow: true
+  accepted.style.shadow: true
+  enforcing.style.shadow: true
+  completed.style.shadow: true
+  draft.style.font-size: 20
+  proposed.style.font-size: 20
+  review.style.font-size: 20
+  accepted.style.font-size: 20
+  enforcing.style.font-size: 20
+  completed.style.font-size: 20
+
+  draft -> proposed: propose
+  proposed -> review: object
+  proposed -> accepted: acknowledge
+  review -> accepted: resolve
+  accepted -> enforcing: enforce
+  enforcing -> completed: close
+}
+
+outcomes: {
+  label: "Alternative outcomes before enforcement"
+  direction: right
+  style.fill: "#F7EDF8"
+  style.stroke: "#5A3D5C"
+
+  note: "Possible before\nenforcement\n "
+  withdrawn: "WITHDRAWN\n "
+  rejected: "REJECTED\n "
+
+  note.style.fill: "#FFFDFE"
+  withdrawn.style.fill: "#FFFDFE"
+  rejected.style.fill: "#F9F1F6"
+
+  note.icon: "icons/review.svg"
+  withdrawn.icon: "icons/withdrawn.svg"
+  rejected.icon: "icons/rejected.svg"
+
+  note.style.shadow: true
+  withdrawn.style.shadow: true
+  rejected.style.shadow: true
+  note.style.font-size: 18
+  withdrawn.style.font-size: 20
+  rejected.style.font-size: 20
+
+  note -> withdrawn
+  note -> rejected
+}

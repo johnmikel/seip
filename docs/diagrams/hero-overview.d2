@@ -1,0 +1,97 @@
+vars: {
+  d2-config: {
+    sketch: true
+  }
+}
+
+direction: down
+
+producer: {
+  label: "Producer workflow"
+  direction: right
+  style.fill: "#F8EEF8"
+  style.stroke: "#5A3D5C"
+
+  schema: "Schema change\n \n "
+  diff: "seip diff\n \n "
+  create: "seip create\n \n "
+  schema.icon: "icons/schema-change.svg"
+  diff.icon: "icons/diff.svg"
+  create.icon: "icons/declaration.svg"
+
+  schema.style.fill: "#FFFDFE"
+  diff.style.fill: "#FFFDFE"
+  create.style.fill: "#FFFDFE"
+
+  schema.style.shadow: true
+  diff.style.shadow: true
+  create.style.shadow: true
+  schema.style.font-size: 18
+  diff.style.font-size: 18
+  create.style.font-size: 18
+
+  schema -> diff
+  diff -> create
+}
+
+canonical: {
+  label: "Canonical declaration"
+  direction: right
+  style.fill: "#F0E3F3"
+  style.stroke: "#5A3D5C"
+
+  declaration: "SEIP declaration\n \n "
+  declaration.shape: page
+  repo: "Git repository\n \n "
+  repo.shape: cylinder
+  declaration.icon: "icons/declaration.svg"
+  repo.icon: "icons/repository.svg"
+
+  declaration.style.fill: "#F7F0F8"
+  declaration.style.stroke: "#5A3D5C"
+  repo.style.fill: "#FFFDFE"
+
+  declaration.style.shadow: true
+  repo.style.shadow: true
+  declaration.style.font-size: 18
+  repo.style.font-size: 18
+
+  declaration -> repo: "stored in"
+}
+
+review: {
+  label: "Review and enforcement"
+  direction: right
+  style.fill: "#EAD9EE"
+  style.stroke: "#5A3D5C"
+
+  ci: "CI validation\n \n "
+  consumers: "Consumer responses\n \n "
+  lifecycle: "Proposal -> review -> enforcement"
+  audit: "Audit trail\n \n "
+  ci.icon: "icons/ci.svg"
+  consumers.icon: "icons/consumers.svg"
+  audit.icon: "icons/audit.svg"
+
+  ci.style.fill: "#FFFDFE"
+  consumers.style.fill: "#FFFDFE"
+  lifecycle.style.fill: "#FFFDFE"
+  audit.style.fill: "#FFFDFE"
+
+  ci.style.shadow: true
+  consumers.style.shadow: true
+  lifecycle.style.shadow: true
+  audit.style.shadow: true
+  ci.style.font-size: 18
+  consumers.style.font-size: 18
+  lifecycle.style.font-size: 18
+  audit.style.font-size: 18
+
+  ci -> lifecycle
+  consumers -> lifecycle
+  lifecycle -> audit
+}
+
+producer.create -> canonical.declaration
+canonical.declaration -> review.ci
+canonical.declaration -> review.consumers

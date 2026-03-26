@@ -1,0 +1,94 @@
+vars: {
+  d2-config: {
+    sketch: true
+  }
+}
+
+direction: down
+
+fragmented: {
+  label: "Without a shared declaration"
+  direction: down
+  style.fill: "#F8EEF8"
+  style.stroke: "#5A3D5C"
+
+  producer: "Schema changes\n "
+  uncertainty: "Impact is unclear\n "
+  ci: "CI sees only a diff\n "
+  outcomes: {
+    direction: down
+    late: "Breakage appears late\n "
+    informal: "Timelines drift informally\n "
+  }
+
+  producer.icon: "icons/schema-change.svg"
+  uncertainty.icon: "icons/diff.svg"
+  ci.icon: "icons/ci.svg"
+  outcomes.late.icon: "icons/rejected.svg"
+  outcomes.informal.icon: "icons/review.svg"
+
+  producer.style.fill: "#FFFDFE"
+  uncertainty.style.fill: "#FFFDFE"
+  ci.style.fill: "#FFFDFE"
+  outcomes.late.style.fill: "#FFFDFE"
+  outcomes.informal.style.fill: "#FFFDFE"
+
+  producer.style.font-size: 20
+  uncertainty.style.font-size: 20
+  ci.style.font-size: 20
+  outcomes.late.style.font-size: 20
+  outcomes.informal.style.font-size: 20
+
+  producer.style.shadow: true
+  uncertainty.style.shadow: true
+  ci.style.shadow: true
+  outcomes.late.style.shadow: true
+  outcomes.informal.style.shadow: true
+
+  producer -> uncertainty
+  uncertainty -> outcomes.late
+  uncertainty -> outcomes.informal
+  uncertainty -> ci
+}
+
+seip: {
+  label: "With SEIP"
+  direction: down
+  style.fill: "#F0E3F3"
+  style.stroke: "#5A3D5C"
+
+  declaration: "SEIP declaration\n "
+  declaration.shape: page
+  shared: "Shared intent\n "
+  lifecycle: "Reviewable lifecycle\n "
+  gate: "CI enforcement\n "
+  audit: "Audit history\n "
+
+  declaration.icon: "icons/declaration.svg"
+  shared.icon: "icons/declaration.svg"
+  lifecycle.icon: "icons/review.svg"
+  gate.icon: "icons/ci.svg"
+  audit.icon: "icons/audit.svg"
+
+  declaration.style.fill: "#F7F0F8"
+  declaration.style.stroke: "#5A3D5C"
+  declaration.style.shadow: true
+  declaration.style.font-size: 20
+  shared.style.fill: "#FFFDFE"
+  lifecycle.style.fill: "#FFFDFE"
+  gate.style.fill: "#FFFDFE"
+  audit.style.fill: "#FFFDFE"
+  shared.style.font-size: 20
+  lifecycle.style.font-size: 20
+  gate.style.font-size: 20
+  audit.style.font-size: 20
+  shared.style.shadow: true
+  lifecycle.style.shadow: true
+  gate.style.shadow: true
+  audit.style.shadow: true
+
+  declaration -> shared
+  declaration -> lifecycle
+  declaration -> gate
+  declaration -> audit
+}

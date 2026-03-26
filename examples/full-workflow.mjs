@@ -49,13 +49,13 @@ const CLI = join(process.cwd(), 'bin', 'seip.mjs');
 const schemaV1 = {
   objects: [
     {
-      name: 'content_item',
+      name: 'account_record',
       properties: [
-        { name: 'content_id', type: 'uuid', required: true },
-        { name: 'title', type: 'string', required: true },
-        { name: 'base_path', type: 'string', required: true },
-        { name: 'organisation', type: 'string', required: true },
-        { name: 'locale', type: 'string', required: true },
+        { name: 'account_id', type: 'uuid', required: true },
+        { name: 'account_name', type: 'string', required: true },
+        { name: 'account_type', type: 'string', required: true },
+        { name: 'institution', type: 'string', required: true },
+        { name: 'region', type: 'string', required: true },
         { name: 'details', type: 'json', required: true }
       ]
     }
@@ -65,14 +65,14 @@ const schemaV1 = {
 const schemaV2 = {
   objects: [
     {
-      name: 'content_item',
+      name: 'account_record',
       properties: [
-        { name: 'content_id', type: 'uuid', required: true },
-        { name: 'title', type: 'string', required: true },
-        { name: 'base_path', type: 'string', required: true },
-        { name: 'primary_publishing_organisation', type: 'string', required: true },
-        { name: 'supporting_organisations', type: 'array', required: false },
-        { name: 'locale', type: 'string', required: true },
+        { name: 'account_id', type: 'uuid', required: true },
+        { name: 'account_name', type: 'string', required: true },
+        { name: 'account_type', type: 'string', required: true },
+        { name: 'primary_financial_institution', type: 'string', required: true },
+        { name: 'supporting_institutions', type: 'array', required: false },
+        { name: 'region', type: 'string', required: true },
         { name: 'details', type: 'json', required: true }
       ]
     }
@@ -87,7 +87,7 @@ writeFileSync(join(DEMO_DIR, 'schema-v2.json'), JSON.stringify(schemaV2, null, 2
 console.log();
 console.log(`${B}╔═══════════════════════════════════════════════════════════╗${R}`);
 console.log(`${B}║  SEIP — Full Workflow Demo                               ║${R}`);
-console.log(`${B}║  GOV.UK: Rename organisation → primary_publishing_org    ║${R}`);
+console.log(`${B}║  Aster Bank: Rename institution → primary_financial_inst ║${R}`);
 console.log(`${B}╚═══════════════════════════════════════════════════════════╝${R}`);
 
 section('Step 1 — Initialise SEIP in your repo');
@@ -105,70 +105,81 @@ if (!validateResult.ok) {
 }
 
 section('Step 4 — Create a declaration for the breaking change');
-run(`node ${CLI} create --id scd_govuk_multi_org --summary "Rename organisation → primary_publishing_organisation" --type rename --breaking --strategy dual_write --producer publishing-api --consumer content-store --consumer search-api --consumer frontend --consumer analytics`);
+run(`node ${CLI} create --id seip_multi_institution --summary "Rename institution → primary_financial_institution" --type rename --breaking --strategy dual_write --producer ledger-api --consumer payments-api --consumer risk-service --consumer frontend --consumer analytics --from-diff schema-v1.json schema-v2.json --rename account_record.institution:account_record.primary_financial_institution`);
 
-// Now manually add affected_objects to the saved declaration
+// Enrich the generated declaration with business context and migration notes
 import { loadDeclaration, saveDeclaration, diffSchemas } from '../src/index.mjs';
-const scd = loadDeclaration('scd_govuk_multi_org', DEMO_DIR);
+const declaration = loadDeclaration('seip_multi_institution', DEMO_DIR);
 const diff = diffSchemas(schemaV1, schemaV2);
-scd.change.affected_objects = diff.affected;
-scd.change.details = 'Support multi-org publishing (RFC-0047). The single organisation field is replaced with primary_publishing_organisation (lead publisher) and supporting_organisations (additional publishers).';
-scd.migration.steps = [
-  'Phase 1: Dual-write both organisation and primary_publishing_organisation',
-  'Phase 2: Consumers migrate reads to primary_publishing_organisation',
-  'Phase 3: Deprecate organisation field (emit warnings)',
-  'Phase 4: Remove organisation from responses'
+declaration.change.affected_objects = diff.affected.map(a => ({ object: a.object, property: a.property }));
+declaration.change.details = 'Support multi-institution accounts (RFC-0021). The single institution field is replaced with primary_financial_institution (lead institution) and supporting_institutions (additional institutions).';
+declaration.migration.steps = [
+  'Phase 1: Dual-write both institution and primary_financial_institution',
+  'Phase 2: Consumers migrate reads to primary_financial_institution',
+  'Phase 3: Deprecate institution field (emit warnings)',
+  'Phase 4: Remove institution from responses'
 ];
-scd.migration.sql = [
-  '-- BigQuery migration',
-  'ALTER TABLE content_items ADD COLUMN primary_publishing_organisation STRING;',
-  'UPDATE content_items SET primary_publishing_organisation = organisation WHERE primary_publishing_organisation IS NULL;'
+declaration.migration.sql = [
+  '-- Warehouse migration',
+  'ALTER TABLE account_records ADD COLUMN primary_financial_institution STRING;',
+  'UPDATE account_records SET primary_financial_institution = institution WHERE primary_financial_institution IS NULL;'
 ];
-scd.migration.rollback = 'Revert presenter to emit only organisation. Remove primary_publishing_organisation from responses.';
-saveDeclaration(scd, DEMO_DIR);
+declaration.migration.rollback = 'Revert presenter to emit only institution. Remove primary_financial_institution from responses.';
+saveDeclaration(declaration, DEMO_DIR);
 
 section('Step 5 — Propose the declaration');
-run(`node ${CLI} propose scd_govuk_multi_org`);
+run(`node ${CLI} propose seip_multi_institution`);
 
 section('Step 6 — Consumers respond');
 
-console.log(`  ${D}Content Store team reviews and acknowledges...${R}`);
-run(`node ${CLI} respond scd_govuk_multi_org --team content-store --status ACKNOWLEDGED --message "4 files affected. All find-and-replace renames. ~1 day." --effort "1 day"`);
+console.log(`  ${D}Payments team reviews and acknowledges...${R}`);
+run(`node ${CLI} respond seip_multi_institution --team payments-api --status ACKNOWLEDGED --message "4 files affected. Mostly find-and-replace renames. ~1 day." --effort "1 day"`);
 
-console.log(`  ${D}Search API team objects — needs reindex window...${R}`);
-run(`node ${CLI} respond scd_govuk_multi_org --team search-api --status OBJECTED --message "ES mapping change requires full reindex of 800K docs. Need until May 15." --effort "1 week + reindex"`);
+console.log(`  ${D}Risk team objects — needs backfill window...${R}`);
+run(`node ${CLI} respond seip_multi_institution --team risk-service --status OBJECTED --message "Risk model backfill requires reprocessing 800K accounts. Need until May 15." --effort "1 week + backfill"`);
 
-console.log(`  ${D}After negotiation, Search API acknowledges with extended timeline...${R}`);
-const updated = loadDeclaration('scd_govuk_multi_org', DEMO_DIR);
+console.log(`  ${D}After negotiation, Risk acknowledges with an extended timeline...${R}`);
+const updated = loadDeclaration('seip_multi_institution', DEMO_DIR);
 updated.timeline.deprecation_date = new Date(Date.now() + 50 * 86400000).toISOString();
 updated.timeline.removal_date = new Date(Date.now() + 75 * 86400000).toISOString();
-// Reset search-api consumer status for re-acknowledgement
-const searchConsumer = updated.consumers.find(c => c.team === 'search-api');
-if (searchConsumer) searchConsumer.status = 'PENDING';
+// Reset risk-service consumer status for re-acknowledgement
+const riskConsumer = updated.consumers.find(c => c.team === 'risk-service');
+if (riskConsumer) riskConsumer.status = 'PENDING';
 saveDeclaration(updated, DEMO_DIR);
 
-run(`node ${CLI} respond scd_govuk_multi_org --team search-api --status ACKNOWLEDGED --message "Extension works. Will reindex on bank holiday weekend." --effort "1 week"`);
+run(`node ${CLI} respond seip_multi_institution --team risk-service --status ACKNOWLEDGED --message "Extension works. Will reprocess during the maintenance window." --effort "1 week"`);
 
 console.log(`  ${D}Frontend and Analytics acknowledge...${R}`);
-run(`node ${CLI} respond scd_govuk_multi_org --team frontend --status ACKNOWLEDGED --message "2 files. Simple rename. Next release." --effort "2 hours"`);
-run(`node ${CLI} respond scd_govuk_multi_org --team analytics --status ACKNOWLEDGED --message "3 dbt models + Looker. Auto-fixable." --effort "3 hours"`);
+run(`node ${CLI} respond seip_multi_institution --team frontend --status ACKNOWLEDGED --message "2 files. Simple rename. Next release." --effort "2 hours"`);
+run(`node ${CLI} respond seip_multi_institution --team analytics --status ACKNOWLEDGED --message "3 dbt models + dashboards. Auto-fixable." --effort "3 hours"`);
 
 section('Step 7 — Validate again (should PASS now)');
 run(`node ${CLI} validate schema-v1.json schema-v2.json`);
 
-section('Step 8 — Check final status');
-run(`node ${CLI} status scd_govuk_multi_org`);
+section('Step 8 — Review the audit log');
+run(`node ${CLI} log seip_multi_institution`);
+
+section('Step 9 — Start enforcement');
+run(`node ${CLI} enforce seip_multi_institution --actor platform-lead`);
+
+section('Step 10 — Close the declaration');
+run(`node ${CLI} close seip_multi_institution --status COMPLETED --actor platform-lead`);
+
+section('Step 11 — Check final status');
+run(`node ${CLI} status seip_multi_institution`);
 
 section('Summary');
 console.log(`  ${B}What you just saw:${R}`);
 console.log();
 console.log(`  ${GR}1.${R} ${B}seip diff${R} detected a breaking rename + a safe addition`);
 console.log(`  ${GR}2.${R} ${B}seip validate${R} ${RD}FAILED${R} the build — undeclared breaking change`);
-console.log(`  ${GR}3.${R} ${B}seip create${R} scaffolded a declaration with consumers and timeline`);
+console.log(`  ${GR}3.${R} ${B}seip create${R} scaffolded a declaration from the schema diff`);
 console.log(`  ${GR}4.${R} ${B}seip propose${R} marked it as ready for consumer review`);
 console.log(`  ${GR}5.${R} ${B}seip respond${R} let consumers ACK, object, and negotiate`);
 console.log(`  ${GR}6.${R} ${B}seip validate${R} ${GR}PASSED${R} — breaking change now has a declaration`);
-console.log(`  ${GR}7.${R} Everything stored as JSON in ${B}.seip/declarations/${R} — version controlled`);
+console.log(`  ${GR}7.${R} ${B}seip log${R} showed the full audit trail`);
+console.log(`  ${GR}8.${R} ${B}seip enforce${R} and ${B}seip close${R} completed the lifecycle`);
+console.log(`  ${GR}9.${R} Everything stored as JSON in ${B}.seip/declarations/${R} — version controlled`);
 console.log();
 console.log(`  ${B}Total setup:${R}    ${GR}0 dependencies, 0 config, 0 servers${R}`);
 console.log(`  ${B}Storage:${R}        ${GR}JSON files in git — no database needed${R}`);

@@ -1,0 +1,67 @@
+vars: {
+  d2-config: {
+    sketch: true
+  }
+}
+
+direction: down
+
+canonical: {
+  label: "Canonical state"
+  style.fill: "#F0E3F3"
+  style.stroke: "#5A3D5C"
+  repo: "Schema repository\n "
+  declarations: ".seip/declarations/*.json\n "
+  repo.icon: "icons/repository.svg"
+  declarations.icon: "icons/declaration.svg"
+  repo.style.fill: "#FFFDFE"
+  declarations.shape: page
+  declarations.style.fill: "#F7F0F8"
+  declarations.style.stroke: "#5A3D5C"
+  repo.style.shadow: true
+  declarations.style.shadow: true
+  repo.style.font-size: 18
+  declarations.style.font-size: 18
+  repo -> declarations
+}
+
+surfaces: {
+  label: "Ways the state is surfaced"
+  style.fill: "#F8EEF8"
+  style.stroke: "#5A3D5C"
+  cli: "SEIP CLI\n "
+  ci: "CI gate\n "
+  dashboards: "Dashboards / internal portals"
+  cli.icon: "icons/diff.svg"
+  ci.icon: "icons/ci.svg"
+  cli.style.fill: "#FFFDFE"
+  ci.style.fill: "#FFFDFE"
+  dashboards.style.fill: "#FFFDFE"
+  cli.style.shadow: true
+  ci.style.shadow: true
+  dashboards.style.shadow: true
+  cli.style.font-size: 18
+  ci.style.font-size: 18
+  dashboards.style.font-size: 18
+}
+
+delivery: {
+  label: "Optional delivery and automation"
+  style.fill: "#EAD9EE"
+  style.stroke: "#5A3D5C"
+  automation: "Automation / agents\n "
+  adapters: "Adapters"
+  automation.icon: "icons/automation.svg"
+  automation.style.fill: "#FFFDFE"
+  adapters.style.fill: "#FFFDFE"
+  automation.style.shadow: true
+  adapters.style.shadow: true
+  automation.style.font-size: 18
+  adapters.style.font-size: 18
+}
+
+canonical.declarations -> surfaces.cli
+canonical.declarations -> surfaces.ci
+canonical.declarations -> surfaces.dashboards
+surfaces.cli -> delivery.automation: "--json"
+delivery.automation -> delivery.adapters: "Slack / Jira / email / webhooks"

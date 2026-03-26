@@ -1,0 +1,57 @@
+vars: {
+  d2-config: {
+    sketch: true
+  }
+}
+
+direction: right
+
+humans: {
+  label: "Human actors"
+  style.fill: "#F8EEF8"
+  style.stroke: "#5A3D5C"
+  producer: "Producer team\n "
+  consumers: "Consumer teams\n "
+  producer.icon: "icons/schema-change.svg"
+  consumers.icon: "icons/consumers.svg"
+  producer.style.fill: "#FFFDFE"
+  consumers.style.fill: "#FFFDFE"
+  producer.style.font-size: 18
+  consumers.style.font-size: 18
+  producer.style.shadow: true
+  consumers.style.shadow: true
+}
+
+core: {
+  label: "Canonical artifact"
+  style.fill: "#F0E3F3"
+  style.stroke: "#5A3D5C"
+  declaration: "Shared declaration\n "
+  declaration.shape: page
+  declaration.icon: "icons/declaration.svg"
+  declaration.style.fill: "#F7F0F8"
+  declaration.style.stroke: "#5A3D5C"
+  declaration.style.shadow: true
+  declaration.style.font-size: 18
+}
+
+systems: {
+  label: "Automation"
+  style.fill: "#EAD9EE"
+  style.stroke: "#5A3D5C"
+  ci: "CI\n "
+  automation: "Automation / agents\n "
+  ci.icon: "icons/ci.svg"
+  automation.icon: "icons/automation.svg"
+  ci.style.fill: "#FFFDFE"
+  automation.style.fill: "#FFFDFE"
+  ci.style.font-size: 18
+  automation.style.font-size: 18
+  ci.style.shadow: true
+  automation.style.shadow: true
+}
+
+humans.producer -> core.declaration: create / propose
+humans.consumers -> core.declaration: acknowledge / object / extend
+systems.ci -> core.declaration: validate policy
+systems.automation -> core.declaration: read files or CLI JSON

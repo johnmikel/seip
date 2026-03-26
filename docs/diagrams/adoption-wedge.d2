@@ -1,0 +1,39 @@
+vars: {
+  d2-config: {
+    sketch: true
+  }
+}
+
+direction: down
+
+phase1: "Phase 1\nCI gate\n "
+phase2: "Phase 2\nPR declarations\n "
+phase3: "Phase 3\nConsumer review\n "
+phase4: "Phase 4\nDashboards + adapters\n "
+
+phase1.icon: "icons/ci.svg"
+phase2.icon: "icons/declaration.svg"
+phase3.icon: "icons/consumers.svg"
+phase4.icon: "icons/dashboard.svg"
+
+phase1.style.fill: "#FFFDFE"
+phase1.style.stroke: "#5A3D5C"
+phase2.style.fill: "#F9F3FA"
+phase2.style.stroke: "#5A3D5C"
+phase3.style.fill: "#F3EAF5"
+phase3.style.stroke: "#5A3D5C"
+phase4.style.fill: "#EEDFF1"
+phase4.style.stroke: "#5A3D5C"
+
+phase1.style.shadow: true
+phase2.style.shadow: true
+phase3.style.shadow: true
+phase4.style.shadow: true
+phase1.style.font-size: 20
+phase2.style.font-size: 20
+phase3.style.font-size: 20
+phase4.style.font-size: 20
+
+phase1 -> phase2
+phase2 -> phase3
+phase3 -> phase4
