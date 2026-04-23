@@ -11,11 +11,14 @@ SEIP specifies a JSON declaration format, lifecycle states, and validation rules
 - Provide a stable, versioned declaration format for schema change intent.
 - Make breaking changes explicit and traceable in version control.
 - Enable producers and consumers to negotiate timelines with a shared artifact.
+- Allow tools to surface declarations through existing review and notification systems.
 
 ## Non-goals
 
 - Owning schema diffing or migration execution in a specific technology stack.
 - Defining how teams should implement migrations internally.
+- Replacing GitHub, Slack, email, dashboards, or other notification systems.
+- Defining a universal cross-repository write path, authorization model, or delivery service.
 
 ## Terminology
 
@@ -35,6 +38,7 @@ SEIP defines the declaration and lifecycle, not the transport mechanism.
 - Git is the canonical state store.
 - CI, pull requests, dashboards, or notification adapters can surface declarations to humans and systems.
 - Notification delivery is optional and outside the core protocol.
+- The protocol does not require a `consumers[].webhook` field.
 - The v0.1 reference implementation operates on the repository that contains the canonical declaration and does not define a universal cross-repository write path.
 
 ## Declaration object
@@ -84,6 +88,10 @@ Recommended transitions:
 
 Renames can be expressed explicitly with `change.renames` entries of the form `{ object, from, to }`. Tools SHOULD treat these mappings as authoritative when validating rename coverage.
 
+## Type compatibility
+
+Tools MAY classify type changes as lossy or lossless according to local schema semantics. Lossy type transitions SHOULD be treated as breaking. Lossless or widening type transitions MAY be reported without requiring a breaking declaration unless local policy says otherwise.
+
 ## Audit events
 
 `events[]` provides an append-only audit trail. Each event SHOULD include `type`, `at`, and `actor`, and MAY include `from_status`, `to_status`, and a freeform `message`.
@@ -91,6 +99,19 @@ Renames can be expressed explicitly with `change.renames` entries of the form `{
 ## Automation Interface
 
 SEIP-compatible tools SHOULD expose machine-readable access to declarations and validation results, either by reading declaration files directly or through command-line or API output.
+
+## Notification adapters
+
+Notification adapters MAY render declarations for delivery through existing systems such as GitHub pull request comments, GitHub Actions summaries, Slack Block Kit messages, email, or internal portals.
+
+Adapters MUST NOT become an alternate source of truth for declaration state. They SHOULD link back to the canonical declaration in Git when a repository URL is available.
+
+The reference CLI provides adapter output through `seip notify`, including:
+
+- `--adapter github` for Markdown suitable for GitHub PR comments or Actions summaries.
+- `--adapter slack` for Slack Block Kit payloads.
+- `--json` for machine-readable automation output.
+- `--dry-run` to build payloads without sending network requests.
 
 ## Policy and non-response
 

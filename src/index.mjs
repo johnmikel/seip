@@ -56,8 +56,21 @@ export function diffSchemas(before, after, options = {}) {
         continue;
       }
       if (bProp.type !== aProp.type) {
+        // Evaluate if this type transition is inherently lossy
+        const lossyTransitions = [
+          { from: 'float', to: 'integer' },
+          { from: 'string', to: 'boolean' },
+          { from: 'string', to: 'integer' },
+          { from: 'object', to: 'string' }
+        ];
+        
+        const isLossy = lossyTransitions.some(
+          t => bProp.type.toLowerCase() === t.from && aProp.type.toLowerCase() === t.to
+        );
+
         affected.push({
           object: name, property: bName, change_type: 'retype',
+          lossy: isLossy,
           before: { name: bName, type: bProp.type, required: bProp.required },
           after: { name: bName, type: aProp.type, required: aProp.required }
         });
@@ -124,7 +137,10 @@ export function diffSchemas(before, after, options = {}) {
     }
   }
 
-  const breaking = affected.some(a => ['remove', 'rename', 'retype', 'add_required'].includes(a.change_type));
+  const breaking = affected.some(a => 
+    ['remove', 'rename', 'add_required'].includes(a.change_type) || 
+    (a.change_type === 'retype' && a.lossy === true)
+  );
   return { affected, breaking };
 }
 
@@ -446,7 +462,8 @@ export function validate(diff, declarations, options = {}) {
   };
 
   const breakingChanges = diff.affected.filter(a =>
-    ['remove', 'rename', 'retype', 'add_required'].includes(a.change_type)
+    ['remove', 'rename', 'add_required'].includes(a.change_type) || 
+    (a.change_type === 'retype' && a.lossy === true)
   );
 
   for (const change of breakingChanges) {

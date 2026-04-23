@@ -4,49 +4,44 @@
 
 ## Git-Native Coordination For Breaking Schema Changes
 
-**Whitepaper v0.1 · March 2026**
+**Whitepaper v0.3 · April 2026**
 
-*Publication candidate. This version is intended as the primary review and circulation draft.*
+*Publication candidate. This version aligns the protocol, documentation, and reference CLI around Git-native state, first-class data type risk, and pluggable notification adapters.*
 
-SEIP defines a Git-native declaration format and reference CLI for making breaking schema changes explicit, reviewable, and enforceable before rollout.
+SEIP defines a Git-native declaration format and reference CLI for making breaking schema changes explicit, reviewable, enforceable, and auditable before rollout.
 
 ## Abstract
 
-Breaking schema changes create coordination risk across producer and consumer teams because impact, timing, and approval state are often distributed across pull requests, tickets, release notes, and chat. The missing piece is not necessarily more process. It is a shared, machine-readable declaration that makes breaking intent visible before rollout.
+Breaking schema changes create coordination risk across producer and consumer teams because impact, timing, and approval state are often distributed across pull requests, tickets, release notes, and chat. The missing piece is not more process by default. It is a shared, machine-readable declaration that makes breaking intent visible before rollout.
 
-SEIP, the Schema Evolution Intent Protocol, defines a Git-native declaration format and reference CLI for expressing schema change intent, recording review state, and validating breaking changes in CI. The reference implementation operates on canonical declaration files stored in Git and assumes existing Git and CI infrastructure rather than a SEIP-owned service. SEIP does not replace schema registries, migration systems, or delivery pipelines. It standardizes the declaration and lifecycle needed to make schema changes reviewable, enforceable, and auditable across teams.
+SEIP, the Schema Evolution Intent Protocol, defines a declaration format and reference CLI for expressing schema change intent, recording review state, validating breaking changes in CI, and emitting notification payloads for existing collaboration systems. Git remains the canonical state store. GitHub pull requests, review requests, Actions checks, repository subscriptions, and organization notification settings provide the default human workflow; Slack and other tools are optional adapters that surface the same declaration state in team channels.
 
-![SEIP Overview](./diagrams/hero-overview.png)
+SEIP does not replace schema registries, migration systems, delivery pipelines, or notification platforms. It standardizes the cross-team declaration and lifecycle needed to make schema changes reviewable, enforceable, and auditable across teams.
 
-*Figure 0. SEIP reference flow: detect a schema change, create a declaration, validate it in CI, collect downstream responses, and retain an audit trail.*
+![SEIP overview](./diagrams/hero-overview.png)
+
+*Figure 0. SEIP keeps declaration state in Git while CI, review surfaces, and adapters consume the same artifact.*
 
 ## 1. Problem Framing
 
-Schema changes are already coordinated in most organizations. The problem is that the coordination is usually fragmented.
+Schema changes are already coordinated in most organizations. The problem is that coordination is usually fragmented.
 
-Teams often use some combination of:
-
-- pull requests
-- change tickets
-- chat threads
-- release notes
-- changelog entries
-- team-specific planning boards
-
-These tools are useful, but they do not usually give producer and consumer teams a single shared artifact that answers a few basic questions:
+Teams often use some combination of pull requests, change tickets, chat threads, release notes, and planning boards. These tools are useful, but they do not usually give producer and consumer teams a single shared artifact that answers:
 
 - Is this change intended to be breaking?
 - Which objects or fields are affected?
+- Is a type change lossless or lossy?
 - Which teams are expected to respond?
-- What compatibility strategy is planned?
-- What timeline is being proposed?
-- Has the change been acknowledged, objected to, or completed?
+- What migration strategy and timeline are being proposed?
+- How will the change be surfaced to the right reviewers?
+- How do consumers validate the change before acknowledging?
+- Has the change been acknowledged, objected to, accepted, enforced, or completed?
 
-Without a shared declaration, the difference between an approved breaking change and a surprise breaking change is often visible only in human memory, scattered messages, or repo-local context.
+Without a shared declaration, the difference between an approved breaking change and a surprise breaking change is often visible only in human memory or scattered messages.
 
-![Problem Framing](./diagrams/problem-framing.png)
+![Problem framing](./diagrams/problem-framing.png)
 
-*Figure 1. Without a shared declaration, impact, timing, and approval state are easy to lose inside ordinary delivery activity.*
+*Figure 1. SEIP consolidates intent, impact, timing, and response state into one declaration.*
 
 ## 2. Goals And Boundaries
 
@@ -54,415 +49,287 @@ SEIP is intentionally narrow.
 
 ### Goals
 
-- make potentially breaking changes visible before rollout
-- create a standard declaration that humans and automation can both inspect
-- support a reviewable lifecycle for producer and consumer teams
-- preserve an audit trail of the coordination process
-- provide a low-friction CI adoption wedge
+- Make potentially breaking schema changes visible before rollout.
+- Treat data type evolution as a first-class source of compatibility risk.
+- Provide a declaration format that humans and automation can both inspect.
+- Support a reviewable lifecycle for producer and consumer teams.
+- Preserve an append-only audit trail of the coordination process.
+- Enable CI to distinguish declared breaking changes from undeclared breaking changes.
+- Emit notification payloads for existing systems such as GitHub Actions, pull request comments, Slack channels, or internal portals.
 
 ### Non-Goals
 
-- replacing schema registries
-- defining how each data platform should diff schemas internally
-- prescribing downstream migration internals for every consumer
-- acting as a built-in notification platform
-- replacing domain-specific contract testing or migration tooling
+- Replacing schema registries.
+- Defining every source-system-specific schema diff algorithm.
+- Owning downstream migration internals for every consumer.
+- Replacing domain-specific contract tests or migration tooling.
+- Replacing GitHub, Slack, email, dashboards, or other notification systems.
+- Defining a universal cross-repository authorization or state synchronization service.
 
 This boundary matters. A credible protocol is easier to adopt when it solves one clear problem well.
 
 ## 3. Working Definition
 
-SEIP is a Git-native schema change coordination protocol and reference CLI for declaring, reviewing, validating, and closing cross-team schema changes.
+SEIP is a Git-native schema change coordination protocol and reference CLI for declaring, reviewing, validating, notifying, and closing cross-team schema changes.
 
-## 4. Core Declaration Model
+## 4. Design Principles
 
-SEIP is built around one primary artifact: the declaration.
+### Git Is Canonical
 
-A declaration is a JSON document stored in version control that captures:
+The canonical state is a declaration JSON file stored at `.seip/declarations/<declaration_id>.json`. Git provides versioning, review, authorship, history, and merge semantics. CI reads declarations from the repository and enforces local policy.
 
-- the change summary
-- whether the producer believes the change is breaking
-- the affected objects or fields
-- the migration strategy at a protocol level
-- the timeline for review, deprecation, and removal
-- the set of downstream consumers expected to respond
-- the audit history of how the declaration moved through its lifecycle
+### Distribution Is Pluggable
 
-### Roles And Responsibilities
+SEIP separates canonical state from distribution. Pull requests, Actions summaries, PR comments, Slack messages, dashboards, and internal portals can all surface the same declaration. These delivery mechanisms are adapters over protocol state, not the protocol itself.
 
-- **Producer:** the team changing the schema
-- **Consumer:** any downstream team or system owner affected by that schema
-- **Automation:** CI, scripts, or internal tooling acting on behalf of those teams
+### Data Types Are First-Class
 
-Humans and automation interact with the same declaration rather than maintaining separate sources of truth.
+Schema compatibility is often decided by type evolution. SEIP distinguishes lossy transitions from safer widening transitions. For example, `float` to `integer` is treated as lossy; `int32` to `int64` can be reported as a retype without automatically making the change breaking.
 
-![Roles](./diagrams/roles.png)
+### Consumers Validate Before Acknowledging
 
-*Figure 2. Producers, consumers, CI, and automation all work against the same declaration rather than separate coordination artifacts.*
+Consumer responses should not be blind approvals. A consumer can run local queries, parsers, ORM models, or tests against the proposed future schema before responding `ACKNOWLEDGED`, `OBJECTED`, or `EXTENSION_REQUESTED`.
 
-![Canonical Model](./diagrams/canonical-model.png)
+## 5. Core Declaration Model
 
-*Figure 3. Git holds the canonical declaration state, while CI, dashboards, and adapters surface or consume it.*
+SEIP is built around one primary artifact: the declaration. A declaration captures:
 
-## 5. Declaration Lifecycle
+- the declaration id and SEIP version
+- the producer team
+- the change summary, type, and breaking status
+- affected objects and fields
+- explicit rename mappings when needed
+- migration strategy and timeline
+- downstream consumers and their current statuses
+- consumer responses
+- lifecycle events
 
-SEIP defines a lifecycle so that declarations are more than static files. They become reviewable records of coordination.
+The declaration is deliberately readable as JSON and structured enough for automation. Humans can review it in a pull request; CI and internal tooling can validate the same file.
 
-The current reference implementation supports the following declaration states:
+![Canonical model](./diagrams/canonical-model.png)
 
-- `DRAFT`
-- `PROPOSED`
-- `UNDER_REVIEW`
-- `ACCEPTED`
-- `ENFORCING`
-- `COMPLETED`
+*Figure 2. Git stores the canonical declaration while downstream surfaces render or enforce it.*
+
+## 6. Notification Model
+
+SEIP does not assume humans will poll a Git repository. It also does not make `consumers[].webhook` a required protocol field. Instead, the reference CLI exposes notification adapters that render the canonical declaration into delivery-specific payloads.
+
+### GitHub As The Default Human Workflow
+
+For organizations already using GitHub, SEIP fits naturally into existing notification mechanics:
+
+- A pull request changing schemas and `.seip/declarations/*.json` becomes the review surface.
+- GitHub review requests, team mentions, CODEOWNERS, repository watching, and issue or pull request subscriptions notify interested reviewers.
+- GitHub Actions can run `seip validate`, attach summaries, or post generated Markdown to the PR.
+- Users can receive notifications through the GitHub inbox, email, mobile, or Actions notification settings.
+
+This aligns with GitHub's notification model for pull requests, issues, repositories, Actions, and subscriptions:
+
+- [GitHub notifications](https://docs.github.com/en/subscriptions-and-notifications/concepts/about-notifications)
+- [GitHub Actions notifications](https://docs.github.com/en/subscriptions-and-notifications/how-tos/managing-github-actions-notifications)
+
+### Slack As A Pluggable Channel Adapter
+
+Slack remains useful because schema coordination often needs a shared team room. The GitHub Slack integration can subscribe a channel to PRs, reviews, comments, workflows, and labels, and a SEIP-specific Slack adapter can post a richer Block Kit summary for a declaration.
+
+This supports Ricardo's suggestion: people who care about a schema can join the relevant Slack channel, while SEIP still keeps Git as the source of truth. Slack is a delivery surface, not a second state store.
+
+Relevant GitHub Slack integration docs:
+
+- [GitHub Slack integration](https://docs.github.com/en/integrations/how-tos/slack/integrate-github-with-slack)
+- [GitHub Slack notification customization](https://docs.github.com/en/integrations/how-tos/slack/customize-notifications)
+
+## 7. Declaration Lifecycle
+
+SEIP declarations move through a compact lifecycle:
+
+`DRAFT -> PROPOSED -> UNDER_REVIEW -> ACCEPTED -> ENFORCING -> COMPLETED`
+
+Additional terminal states are:
+
 - `WITHDRAWN`
 - `REJECTED`
 
-In practice, a common path is:
+Consumer responses shape the lifecycle:
 
-`DRAFT -> PROPOSED -> ACCEPTED -> ENFORCING -> COMPLETED`
+- `ACKNOWLEDGED` means a consumer has validated or accepted the impact.
+- `OBJECTED` means the change needs review or renegotiation.
+- `EXTENSION_REQUESTED` means the consumer accepts the direction but needs more time.
 
-Consumer responses such as `ACKNOWLEDGED`, `OBJECTED`, and `EXTENSION_REQUESTED` help determine whether the declaration remains proposed, moves under review, or becomes accepted.
+SEIP does not prescribe how teams negotiate. It records the result in Git and makes the current state enforceable by CI.
 
-![Lifecycle](./diagrams/lifecycle.png)
+![Declaration lifecycle](./diagrams/lifecycle.png)
 
-*Figure 4. Declarations move through a compact lifecycle, with consumer responses shaping review and enforcement decisions.*
+*Figure 3. Consumer responses move declarations through review, enforcement, and closure states.*
 
-## 6. Canonical State And Discovery
+## 8. Reference CLI Workflow
 
-SEIP separates canonical state from distribution.
+The following example uses commands supported by the current reference CLI.
 
-- The declaration is stored in Git at `.seip/declarations/<declaration_id>.json`
-- Git is the source of truth
-- CI can validate changes against those declarations
-- Pull requests can surface declaration files for human review
-- Dashboards or notification adapters can be added later
+### Step 1: Detect A Lossy Type Change
 
-This distinction is important. SEIP itself is not a webhook platform. It does not require every downstream team to watch every upstream repository manually. Instead, it defines a portable declaration format that existing delivery mechanisms can surface.
-
-In other words:
-
-- **canonical state:** declaration JSON in Git
-- **distribution:** CI checks, PR review, dashboards, or adapters
-- **automation interface:** declaration files plus machine-readable CLI output
-
-### Transport And State Sync
-
-SEIP is transport-agnostic. It specifies the declaration format and lifecycle semantics; it does not prescribe one universal synchronization mechanism between repositories or teams.
-
-In v0.1, the reference CLI operates on the repository that contains the canonical declaration. That model is sufficient for shared repositories, monorepos, and CI-mediated review flows. It does not, by itself, solve cross-repository authorization, identity, or distributed consensus.
-
-Organizations that need broader coordination may layer SEIP onto existing pull request workflows, CI jobs, internal portals, or future adapter mechanisms. Those mechanisms distribute or reflect protocol state; they are not part of the protocol definition itself.
-
-## 7. Reference CLI Surface
-
-The reference CLI is the shortest path from schema diff to governed coordination.
-
-Current commands include:
-
-- `seip init`
-- `seip diff <before> <after>`
-- `seip create [options]`
-- `seip propose <id>`
-- `seip respond <id> --team <name> ...`
-- `seip status [id]`
-- `seip log <id>`
-- `seip validate <before> <after>`
-- `seip lint`
-- `seip enforce <id>`
-- `seip close <id>`
-
-This matters for developer experience. A protocol becomes far more usable when its reference implementation makes the happy path obvious.
-
-The reference CLI also rejects unknown response enums and treats malformed required timestamps as declaration errors. That keeps the reference implementation aligned with the protocol rules it asks teams to rely on.
-
-## 8. Declaration Example
-
-The declaration below represents a breaking rename in a fictional financial platform.
-
-```json
-{
-  "seip_version": "0.1.0",
-  "declaration_id": "seip_rename_institution",
-  "created_at": "2026-03-25T09:00:00.000Z",
-  "status": "PROPOSED",
-  "producer": {
-    "team": "ledger-api"
-  },
-  "change": {
-    "type": "rename",
-    "breaking": true,
-    "summary": "Rename institution to primary_financial_institution",
-    "affected_objects": [
-      {
-        "object": "account_record",
-        "property": "institution"
-      }
-    ],
-    "renames": [
-      {
-        "object": "account_record",
-        "from": "institution",
-        "to": "primary_financial_institution"
-      }
-    ]
-  },
-  "migration": {
-    "strategy": "dual_write"
-  },
-  "timeline": {
-    "review_deadline": "2026-04-01T00:00:00.000Z",
-    "deprecation_date": "2026-04-24T00:00:00.000Z",
-    "removal_date": "2026-05-24T00:00:00.000Z"
-  },
-  "consumers": [
-    {
-      "team": "payments-api",
-      "status": "PENDING"
-    },
-    {
-      "team": "risk-service",
-      "status": "PENDING"
-    },
-    {
-      "team": "analytics",
-      "status": "PENDING"
-    }
-  ],
-  "responses": [],
-  "events": [
-    {
-      "type": "CREATED",
-      "at": "2026-03-25T09:00:00.000Z",
-      "actor": "ledger-api",
-      "to_status": "DRAFT"
-    }
-  ]
-}
-```
-
-This example shows the core design choice in SEIP: the declaration is both human-readable enough for review and structured enough for automation.
-
-## 9. Example Workflow
-
-The following workflow is based on the current reference CLI and the repository demo.
-
-### Step 1: Initialize The Repository
-
-```bash
-npx seip init
-```
-
-This creates `.seip/declarations/` and the default configuration file if needed.
-
-### Step 2: Detect The Schema Diff
+The `ledger-api` team changes `transaction.value` from `float` to `integer`.
 
 ```bash
 npx seip diff schema-v1.json schema-v2.json --strict
 ```
 
-The diff command identifies affected objects and whether the change should be treated as breaking under current policy.
+The diff reports a lossy retype and marks the change as breaking.
 
-### Step 3: Generate The Declaration
+### Step 2: Create A Declaration
 
 ```bash
 npx seip create \
-  --id seip_rename_institution \
-  --summary "Rename institution to primary_financial_institution" \
-  --type rename \
+  --id seip_retype_transaction_value \
+  --summary "Change transaction.value from float to integer" \
+  --type retype \
   --breaking \
   --strategy dual_write \
   --producer ledger-api \
   --consumer payments-api \
   --consumer risk-service \
-  --consumer analytics \
-  --from-diff schema-v1.json schema-v2.json \
-  --rename account_record.institution:account_record.primary_financial_institution
+  --from-diff schema-v1.json schema-v2.json
 ```
 
-This is an important developer experience step. The producer does not need to hand-author the declaration from scratch. The CLI can prefill affected objects from the schema diff and capture explicit rename mappings when heuristics are insufficient.
+The declaration is written to `.seip/declarations/seip_retype_transaction_value.json`.
 
-### Step 4: Propose The Change
+### Step 3: Propose The Change
 
 ```bash
-npx seip propose seip_rename_institution --actor ledger-api
+npx seip propose seip_retype_transaction_value --actor ledger-api
 ```
 
-At this point the change is no longer only a local implementation detail. It becomes a shared artifact for review.
+The declaration is now ready for consumer review.
 
-### Step 5: Gather Consumer Responses
+### Step 4: Surface The Declaration
 
-An uncomplicated consumer can acknowledge the change:
+GitHub Markdown output can be posted to a PR comment or appended to `$GITHUB_STEP_SUMMARY`:
 
 ```bash
-npx seip respond seip_rename_institution \
+npx seip notify seip_retype_transaction_value \
+  --adapter github \
+  --repo-url https://github.com/acme/ledger-api
+```
+
+Slack output can be posted to a team channel:
+
+```bash
+npx seip notify seip_retype_transaction_value \
+  --adapter slack \
+  --webhook "$SLACK_SCHEMA_WEBHOOK" \
+  --repo-url https://github.com/acme/ledger-api
+```
+
+Both adapters are rendering the same declaration state.
+
+### Step 5: Consumers Validate And Respond
+
+The `payments-api` team validates its local query code and acknowledges:
+
+```bash
+npx seip validate-consumer seip_retype_transaction_value --against ./src/queries/
+npx seip respond seip_retype_transaction_value \
   --team payments-api \
   --status ACKNOWLEDGED \
-  --message "Four files affected. Mostly straightforward rename work." \
-  --effort "1 day"
+  --message "Validation passed; values are already truncated upstream."
 ```
 
-A consumer with higher migration cost can object or request more time:
+The `risk-service` team objects because fraud models require decimal precision:
 
 ```bash
-npx seip respond seip_rename_institution \
+npx seip validate-consumer seip_retype_transaction_value --against ./models/
+npx seip respond seip_retype_transaction_value \
   --team risk-service \
   --status OBJECTED \
-  --message "Backfill requires reprocessing 800K accounts. Need a longer window." \
-  --effort "1 week + backfill"
+  --message "Fraud models require decimal precision."
 ```
 
-This is where SEIP becomes more than a diffing tool. It provides a first-class place to record downstream responses rather than leaving them scattered across side channels.
+Because a consumer objected, the declaration moves to `UNDER_REVIEW`.
 
-### Step 6: Update The Timeline
+### Step 6: Resolve Or Withdraw
 
-SEIP does not prescribe how teams negotiate. It preserves the result of that negotiation in the declaration.
-
-In v0.1, the producer updates the declaration file directly in Git. There is not yet a dedicated `seip update-timeline` command. A normal edit to the declaration JSON records the revised dates, for example:
-
-```json
-{
-  "timeline": {
-    "deprecation_date": "2026-05-10T00:00:00.000Z",
-    "removal_date": "2026-06-10T00:00:00.000Z"
-  }
-}
-```
-
-After that declaration update is committed through the usual repository workflow, the affected consumer responds again:
+If the producer withdraws the change, the current CLI records that through `close`:
 
 ```bash
-npx seip respond seip_rename_institution \
-  --team risk-service \
-  --status ACKNOWLEDGED \
-  --message "Extended window works. We will migrate during the maintenance period." \
-  --effort "1 week"
+npx seip close seip_retype_transaction_value \
+  --status WITHDRAWN \
+  --reason "Retaining decimal precision for risk-service."
 ```
 
-SEIP does not automate every part of negotiation. What it does provide is a durable lifecycle and audit trail so the agreed outcome does not disappear into unstructured conversation.
+The audit trail remains in Git.
 
-### Step 7: Validate In CI
+## 9. CI-First Adoption Path
 
-```bash
-npx seip validate schema-v1.json schema-v2.json --strict
-```
-
-This is the highest-value adoption wedge. A repository can adopt this gate before building any richer automation around it.
-
-### Step 8: Inspect The Audit Trail
-
-```bash
-npx seip log seip_rename_institution
-```
-
-The audit trail is especially valuable when changes span teams, release windows, and several days or weeks of coordination.
-
-### Step 9: Enforce And Close
-
-```bash
-npx seip enforce seip_rename_institution --actor platform-lead
-npx seip close seip_rename_institution --status COMPLETED --actor platform-lead
-```
-
-The declaration now records not just that a change was proposed, but that it moved through review, entered enforcement, and reached closure.
-
-## 10. CI-First Adoption Path
-
-The most practical entry point for SEIP is not a new organization-wide platform rollout. It is a single CI check.
-
-If a team adds SEIP only here:
+The smallest useful adoption wedge is a CI gate. Teams can add SEIP without rolling out a new platform:
 
 ```yaml
 - name: Validate schema changes
   run: npx seip validate schema-v1.json schema-v2.json --strict
 ```
 
-it already gains one important property:
+This immediately gives one important property: CI can fail undeclared breaking changes before merge.
 
-**CI can now fail on undeclared breaking changes.**
+A practical rollout is:
 
-That is a meaningful improvement even before any team adopts the full review lifecycle.
+1. Add `seip validate` to CI.
+2. Create declarations for breaking changes.
+3. Request reviews from affected consumers.
+4. Emit GitHub or Slack notification payloads if useful.
+5. Tighten policy to require minimum statuses or required consumer acknowledgements.
 
-![Adoption Wedge](./diagrams/adoption-wedge.png)
+![Adoption wedge](./diagrams/adoption-wedge.png)
 
-*Figure 5. A practical rollout starts with a CI gate, then expands to declarations in PRs, consumer review, and optional integrations.*
+*Figure 4. Teams can start with a CI gate and add richer review or notification surfaces later.*
 
-This sequence matters for adoption. It allows teams to start with a small DX improvement and expand only if the workflow proves useful.
+## 10. Automation Interface
 
-### Non-Response Policy
-
-Review deadlines are informative unless backed by policy. Organizations that need stricter behavior can configure CI to require a minimum declaration status and acknowledgements from named consumers before a breaking change is treated as covered.
-
-Accordingly, v0.1 treats non-response as an organizational policy concern rather than an automatically resolved protocol event. Teams may choose to keep the build blocked until required consumers respond, but the reference implementation does not auto-accept, auto-reject, or otherwise resolve missed deadlines on behalf of participants.
-
-## 11. Automation And JSON Interface
-
-SEIP does not require specialized agent protocols to be automation-friendly. The reference CLI already exposes machine-readable output.
-
-Examples:
+The CLI exposes machine-readable output for automation:
 
 ```bash
 npx seip diff schema-v1.json schema-v2.json --json
 npx seip validate schema-v1.json schema-v2.json --json
-npx seip status seip_rename_institution --json
-npx seip log seip_rename_institution --json
+npx seip status seip_retype_transaction_value --json
+npx seip log seip_retype_transaction_value --json
+npx seip notify seip_retype_transaction_value --adapter github --json
 ```
 
-This gives internal tooling, CI steps, and agentic systems a stable way to consume the same state humans review in Git.
+This lets CI jobs, internal portals, and agents consume the same state humans review in Git.
 
-## 12. Migration Scope
+## 11. Migration Scope
 
-SEIP deliberately draws a boundary around migration detail.
+SEIP records migration intent; it does not own every migration detail.
 
 The producer can declare:
 
-- the intended compatibility strategy
-- the proposed deprecation window
-- the planned removal date
+- compatibility strategy
+- affected objects and fields
+- proposed review, deprecation, and removal dates
+- consumer response state
 
-But SEIP does not assume the producer can fully specify how every consumer should migrate internally. One consumer may need a simple field rename. Another may need a reindex, backfill, or staged rollout tied to a maintenance window. Those downstream mechanics remain consumer-owned.
+Consumers still own their local migration work. One consumer may need a simple field rename. Another may need a backfill, reindex, parser change, or model retraining. SEIP gives those consumers a durable place to respond and gives CI a durable state to enforce.
 
-That distinction keeps the protocol realistic across different domains and storage technologies.
+## 12. Current Limitations
 
-## 13. Current Limitations
-
-The current reference implementation is useful, but intentionally incomplete.
+The reference implementation is intentionally small.
 
 Current limits include:
 
-- diffing is generic rather than source-system-specific
-- rename detection is still heuristic unless explicit mappings are supplied
-- notification adapters are outside the core protocol
-- no central dashboard is bundled today
+- Diffing is generic and not source-system-specific.
+- Rename detection is heuristic unless explicit rename mappings are supplied.
+- `validate-consumer` is a reference hook rather than a universal contract testing engine.
+- Notification adapters emit payloads; the GitHub adapter does not call the GitHub API directly.
+- Cross-repository authorization and state synchronization remain organization-specific.
+- Review deadline behavior is policy-driven; SEIP does not auto-accept or auto-reject missed responses.
 
-These are appropriate places for future extensions, but they should not be presented as existing capability.
+These limits are appropriate for a protocol that aims to be adopted incrementally rather than introduced as a heavyweight platform.
 
-## 14. Organizational Value
-
-SEIP is most useful in organizations where:
-
-- a producer schema is consumed by multiple downstream teams
-- breaking impact is not always visible to the producer alone
-- schema coordination currently depends on scattered conversation
-- teams want stronger governance without introducing a heavyweight central platform
-
-In that setting, SEIP provides:
-
-- a shared declaration for the change
-- a reviewable lifecycle
-- an audit trail
-- a CI gate that distinguishes declared from undeclared breaking changes
-
-SEIP does not replace delivery tools. It gives those tools a shared cross-team artifact they can surface, validate, and audit.
-
-## 15. Conclusion
+## 13. Conclusion
 
 SEIP is a narrow proposal: a schema change declaration format and reference CLI for coordinating breaking changes before rollout.
 
-Its immediate value is operational. A CI gate can distinguish a declared breaking change from an undeclared one before merge. Its broader value is organizational. Producer and consumer teams gain a shared artifact, a reviewable lifecycle, and an audit trail that persist beyond transient coordination channels.
+Its immediate value is operational. CI can distinguish declared breaking changes from undeclared ones. Its broader value is organizational. Producer and consumer teams gain a shared artifact, a reviewable lifecycle, notification hooks for existing collaboration systems, and an audit trail that persists beyond transient coordination channels.
 
-That is the appropriate scope for v0.1. SEIP is not a universal delivery platform. It is a protocol and tooling layer that can be introduced incrementally, align with existing Git and CI workflows, and provide a clearer contract around schema evolution.
+The robust version of SEIP is not "Git plus Slack." It is Git as canonical state, CI as enforcement, GitHub as the natural review and notification surface for many teams, Slack as a useful pluggable channel, and declarations as the durable contract between producers and consumers.
 
 ## Appendix: Diagram Sources
 
