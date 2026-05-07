@@ -1,0 +1,41 @@
+name: Schema Evolution Intent Protocol (SEIP) Check
+
+# This is an example workflow demonstrating how to integrate SEIP
+# into a project's CI pipeline to block undeclared breaking schema changes.
+# Add `seip` to your repository's devDependencies before using this workflow.
+# When testing from a vendored checkout, replace `npx seip` with
+# `node ./path/to/seip/bin/seip.mjs`.
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'schemas/**/*.json'
+
+jobs:
+  validate-schema-change:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch all history to allow comparison against base branch
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        # Use `npm ci` when your repository has a package-lock.json.
+        # Use your organization's package manager equivalent otherwise.
+        run: npm ci
+
+      - name: Check for Undeclared Breaking Changes
+        run: |
+          # Compare the old schema against the new schema in the PR
+          # If a strict breaking change is detected and NO matching SEIP intent
+          # declaration is found in `.seip/declarations/`, this will fail with exit 1.
+
+          # Example assumes the schema is singular. In complex repos, you would loop over changed files.
+          npx seip validate schemas/schema-before.json schemas/schema-after.json --strict

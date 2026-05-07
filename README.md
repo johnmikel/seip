@@ -16,6 +16,18 @@ SEIP is not a notification platform. The reference CLI can emit GitHub Markdown 
 - **Consumer responses:** Downstream teams can acknowledge, object, or request extensions through a shared lifecycle.
 - **Pluggable notifications:** `seip notify` renders GitHub PR/Actions Markdown or Slack payloads from the same declaration.
 
+## Adoption Path
+
+For platform and data engineering teams, the smallest useful rollout is:
+
+1. Run the full workflow demo with `npm run demo`.
+2. Add `seip validate` as a CI gate for schema changes.
+3. Require a SEIP declaration for breaking changes.
+4. Surface declarations in GitHub or Slack using `seip notify`.
+5. Require affected consumers to acknowledge, object, or request more time before enforcement.
+
+The canonical demo script is `examples/full-workflow.mjs`, the presenter guide is `docs/DEMO_RUNBOOK.md`, and a starter GitHub Actions workflow lives in `examples/github-actions-template.yml`.
+
 ## 30-Second Start
 
 ```bash
@@ -34,6 +46,8 @@ npx seip propose seip_retype_value
 npx seip notify seip_retype_value --adapter github --repo-url https://github.com/acme/ledger-api
 npx seip validate schema-v1.json schema-v2.json --strict
 ```
+
+When working from a local clone before publishing or installing the package, replace `npx seip` with `node ./bin/seip.mjs`.
 
 ## Example Two-Consumer Workflow
 
@@ -131,10 +145,25 @@ npx seip notify seip_retype_value \
 - A Word export of the whitepaper lives in `docs/SEIP_WHITEPAPER_FINAL.docx`.
 - Reusable D2, PNG, and SVG diagrams live in `docs/diagrams/`.
 
+## Run The Full-Blown Demo
+
+```bash
+npm run demo
+```
+
+The demo creates a disposable repo in `/tmp/seip-full-blown-demo` and walks through a complete SEIP lifecycle: CI failure on an undeclared lossy retype, declaration creation, GitHub PR/Actions notification output, Slack dry-run output, consumer validation, objection, negotiation, acceptance, enforcement, closure, and audit history.
+
+For presenter notes, expected output, troubleshooting, and payload reuse examples, see `docs/DEMO_RUNBOOK.md`.
+
+## Release Evidence
+
+Use `docs/RELEASE_CHECKLIST.md` to audit the paper, demo, CI template, tests, and known non-goals before presenting or adopting this release.
+
 ## Current Limits
 
 - Diffing is intentionally generic and not source-system-specific.
 - Rename detection is heuristic unless explicit rename mappings are supplied.
+- `validate-consumer` is a reference hook; teams connect it to local parsers, queries, dbt models, contract tests, or other checks.
 - Notification adapters emit payloads; the GitHub adapter does not call the GitHub API.
 - Cross-repository authorization and state synchronization are organization-specific.
 

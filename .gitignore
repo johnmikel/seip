@@ -1,2 +1,13 @@
 .DS_Store
 node_modules/
+
+# Local scratch state produced by ad hoc demo scripts in this tool repo.
+# Adopting projects should track their own .seip/declarations/*.json files.
+.seip/
+.seip-demo/
+
+# Older local experiments kept out of the operational release package.
+/schema-v1.json
+/schema-v2.json
+/seip-agent.mjs
+/examples/foolproof-demo.mjs

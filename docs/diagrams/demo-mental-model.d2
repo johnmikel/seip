@@ -1,0 +1,20 @@
+direction: right
+
+producer: "Producer\nledger-api"
+ci: "CI gate\nseip validate"
+declaration: "Git declaration\n.seip/declarations/*.json"
+github: "GitHub\nPR comment / Actions summary"
+slack: "Slack\nschema channel"
+consumers: "Consumers\npayments / risk / analytics"
+audit: "Audit trail\nseip log"
+
+producer -> ci: "schema change"
+ci -> producer: "blocks undeclared breaking change"
+producer -> declaration: "declares intent"
+declaration -> github: "render Markdown"
+declaration -> slack: "render Block Kit payload"
+github -> consumers: "review in existing workflow"
+slack -> consumers: "join channel, see alert"
+consumers -> declaration: "ACK / OBJECT / negotiate"
+declaration -> ci: "policy can now pass"
+declaration -> audit: "events are preserved"

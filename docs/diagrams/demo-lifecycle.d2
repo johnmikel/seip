@@ -1,0 +1,14 @@
+direction: right
+
+draft: "DRAFT\ncreated but not ready"
+proposed: "PROPOSED\nready for review"
+review: "UNDER_REVIEW\nconsumer objected"
+accepted: "ACCEPTED\nall consumers acknowledged"
+enforcing: "ENFORCING\npolicy is active"
+completed: "COMPLETED\nchange is closed"
+
+draft -> proposed: "producer proposes"
+proposed -> review: "risk-service objects"
+review -> accepted: "timeline adjusted"
+accepted -> enforcing: "platform lead enforces"
+enforcing -> completed: "change closes"

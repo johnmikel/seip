@@ -1,0 +1,22 @@
+direction: right
+
+step1: "1. Schema change\nfloat -> integer"
+step2: "2. Diff\nlossy retype"
+step3: "3. CI fails\nno declaration"
+step4: "4. Declare\nproducer + consumers"
+step5: "5. Propose\nPROPOSED"
+step6: "6. Notify\nGitHub + Slack"
+step7: "7. Respond\nACK + OBJECT"
+step8: "8. Negotiate\nrisk accepts"
+step9: "9. Accept\nall acknowledged"
+step10: "10. Close\nCOMPLETED"
+
+step1 -> step2
+step2 -> step3
+step3 -> step4
+step4 -> step5
+step5 -> step6
+step6 -> step7
+step7 -> step8
+step8 -> step9
+step9 -> step10
