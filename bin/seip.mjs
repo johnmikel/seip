@@ -19,12 +19,15 @@
  *   seip close <id>                   Close declaration (COMPLETED/WITHDRAWN/REJECTED)
  */
 
-import { readFileSync, existsSync } from 'fs';
+import { execSync } from 'child_process';
+import { readFileSync, existsSync, statSync } from 'fs';
+import { resolve } from 'path';
 import {
   diffSchemas, createDeclaration, propose, respond, enforce, complete, withdraw, reject,
   saveDeclaration, loadDeclaration, listDeclarations,
   ensureSeipDir, validate, validateDeclaration,
-  getConfig, saveConfig, defaultConfig, getConfigPath
+  getConfig, saveConfig, defaultConfig, getConfigPath,
+  isBreakingChange
 } from '../src/index.mjs';
 import { runNotificationAdapter } from '../src/notify.js';
 
@@ -36,12 +39,16 @@ const cmd = args[0];
 
 function flag(name) {
   const i = args.indexOf(`--${name}`);
-  if (i === -1) return undefined;
-  return args[i + 1];
+  if (i !== -1) return args[i + 1];
+  const prefix = `--${name}=`;
+  const match = args.find(arg => arg.startsWith(prefix));
+  if (!match) return undefined;
+  return match.slice(prefix.length);
 }
 
 function hasFlag(name) {
-  return args.includes(`--${name}`);
+  const prefix = `--${name}=`;
+  return args.includes(`--${name}`) || args.some(arg => arg.startsWith(prefix));
 }
 
 function outputJson(value) {
@@ -113,11 +120,20 @@ switch (cmd) {
     }
     for (const a of result.affected) {
       const icon = a.change_type === 'rename' ? '✏️ ' : a.change_type.startsWith('add') ? '➕' : a.change_type === 'remove' ? '❌' : '🔄';
-      const isBreaking = ['remove', 'rename', 'add_required'].includes(a.change_type) ||
-        (a.change_type === 'retype' && a.lossy === true);
+      const isBreaking = isBreakingChange(a);
       const severity = isBreaking ? `${RD}BREAKING${R}` : `${GR}safe${R}`;
       const label = a.change_type === 'add_required'
         ? 'add (required)'
+        : a.change_type === 'make_required'
+          ? 'requiredness tightened'
+        : a.change_type === 'make_non_nullable'
+          ? 'nullability tightened'
+        : a.change_type === 'enum_narrow'
+          ? 'enum narrowed'
+        : a.change_type === 'enum_widen'
+          ? 'enum widened'
+        : a.change_type === 'format_change'
+          ? 'format changed'
         : a.change_type === 'retype' && a.lossy === true
           ? 'retype (lossy)'
           : a.change_type;
@@ -155,7 +171,14 @@ switch (cmd) {
       const before = loadJson(beforeFile);
       const after = loadJson(afterFile);
       const diff = diffSchemas(before, after, { strict });
-      affectedObjects = diff.affected.map(a => ({ object: a.object, property: a.property }));
+      affectedObjects = diff.affected.map(a => ({
+        object: a.object,
+        property: a.property,
+        change_type: a.change_type,
+        lossy: !!a.lossy,
+        before_type: a.before?.type || null,
+        after_type: a.after?.type || null
+      }));
       if (!hasFlag('breaking')) breaking = diff.breaking;
     }
 
@@ -481,13 +504,130 @@ switch (cmd) {
   case 'validate-consumer': {
     const id = args[1];
     const against = flag('against');
+    const command = flag('command');
+    const team = flag('team');
+    const record = hasFlag('record');
     if (!id || !against) { console.error('Usage: seip validate-consumer <id> --against <dir>'); process.exit(1); }
     const scd = loadDeclaration(id);
     if (!scd) { console.error(`${RD}Declaration not found: ${id}${R}`); process.exit(1); }
-    
-    console.log(`\n${CY}🔍 Validating consumer queries in ${against} against proposed schema from ${id}...${R}`);
-    // Simulated programmatic validation
-    console.log(`${GR}✓ Local queries are structurally sound.${R}\n`);
+    if (record && !team) {
+      console.error(`${RD}Recording validation evidence requires --team <consumer-team>.${R}`);
+      process.exit(1);
+    }
+
+    if (!existsSync(against)) {
+      console.error(`${RD}Consumer validation path not found: ${against}${R}`);
+      process.exit(1);
+    }
+
+    const absoluteAgainst = resolve(against);
+    const declarationPath = resolve('.seip', 'declarations', `${id}.json`);
+    const targetKind = statSync(against).isDirectory() ? 'directory' : 'file';
+
+    if (hasFlag('json') && !command) {
+      outputJson({
+        valid: true,
+        declaration_id: id,
+        against: absoluteAgainst,
+        target_kind: targetKind,
+        command: null
+      });
+      break;
+    }
+
+    if (!hasFlag('json')) {
+      console.log(`\n${CY}Validating consumer ${targetKind} ${absoluteAgainst} against ${id}...${R}`);
+    }
+
+    if (command) {
+      try {
+        const output = execSync(command, {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            SEIP_DECLARATION_ID: id,
+            SEIP_DECLARATION_PATH: declarationPath,
+            SEIP_CONSUMER_PATH: absoluteAgainst
+          },
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+        const commandOutput = output.trim();
+        if (record) {
+          scd.events.push({
+            type: 'CONSUMER_VALIDATED',
+            at: new Date().toISOString(),
+            actor: team,
+            message: `Consumer validation passed for ${team}`,
+            validation: {
+              status: 'PASSED',
+              team,
+              target: absoluteAgainst,
+              target_kind: targetKind,
+              command,
+              command_output: commandOutput
+            }
+          });
+          saveDeclaration(scd);
+        }
+        if (hasFlag('json')) {
+          outputJson({
+            valid: true,
+            recorded: record,
+            declaration_id: id,
+            against: absoluteAgainst,
+            target_kind: targetKind,
+            command,
+            output: commandOutput
+          });
+          break;
+        }
+        if (commandOutput) console.log(commandOutput);
+        console.log(`${GR}✓ Consumer validation command passed.${R}\n`);
+      } catch (error) {
+        if (record) {
+          scd.events.push({
+            type: 'CONSUMER_VALIDATED',
+            at: new Date().toISOString(),
+            actor: team,
+            message: `Consumer validation failed for ${team}`,
+            validation: {
+              status: 'FAILED',
+              team,
+              target: absoluteAgainst,
+              target_kind: targetKind,
+              command,
+              command_output: (error.stdout || '').trim(),
+              command_error: (error.stderr || '').trim(),
+              exit_status: error.status || 1
+            }
+          });
+          saveDeclaration(scd);
+        }
+        if (hasFlag('json')) {
+          outputJson({
+            valid: false,
+            recorded: record,
+            declaration_id: id,
+            against: absoluteAgainst,
+            target_kind: targetKind,
+            command,
+            stdout: (error.stdout || '').trim(),
+            stderr: (error.stderr || '').trim(),
+            status: error.status
+          });
+        } else {
+          if (error.stdout) console.log(error.stdout);
+          if (error.stderr) console.error(error.stderr);
+          console.error(`${RD}Consumer validation command failed with exit ${error.status ?? 1}.${R}`);
+        }
+        process.exit(error.status || 1);
+      }
+      break;
+    }
+
+    console.log(`${GR}✓ Consumer validation target exists.${R}`);
+    console.log(`${D}  Add --command "..." to run local parser, query, dbt, contract, or model checks.${R}\n`);
     break;
   }
 

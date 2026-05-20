@@ -54,7 +54,7 @@ SEIP is intentionally narrow.
 - Provide a declaration format that humans and automation can both inspect.
 - Support a reviewable lifecycle for producer and consumer teams.
 - Preserve an append-only audit trail of the coordination process.
-- Enable CI to distinguish declared breaking changes from undeclared breaking changes.
+- Enable CI to distinguish validly declared breaking changes from undeclared or weakly declared breaking changes.
 - Emit notification payloads for existing systems such as GitHub Actions, pull request comments, Slack channels, or internal portals.
 
 ### Non-Goals
@@ -82,13 +82,13 @@ The canonical state is a declaration JSON file stored at `.seip/declarations/<de
 
 SEIP separates canonical state from distribution. Pull requests, Actions summaries, PR comments, Slack messages, dashboards, and internal portals can all surface the same declaration. These delivery mechanisms are adapters over protocol state, not the protocol itself.
 
-### Data Types Are First-Class
+### Compatibility Tightening Is First-Class
 
-Schema compatibility is often decided by type evolution. SEIP distinguishes lossy transitions from safer widening transitions. For example, `float` to `integer` is treated as lossy; `int32` to `int64` can be reported as a retype without automatically making the change breaking.
+Schema compatibility is often decided by type evolution and constraint changes. SEIP distinguishes lossy transitions from safer widening transitions. For example, `float` or JSON Schema `number` to `integer` is treated as lossy; `int32` to `int64` can be reported as a retype without automatically making the change breaking. The reference CLI also flags generic compatibility tightening such as making an existing field required, changing nullable to non-nullable, narrowing enum values, or changing a field format. It accepts SEIP object/table fixtures and common JSON Schema object inputs, including local references, `$defs`, nested object paths, array item fields, and simple `allOf` composition.
 
 ### Consumers Validate Before Acknowledging
 
-Consumer responses should not be blind approvals. A consumer can run local queries, parsers, ORM models, or tests against the proposed future schema before responding `ACKNOWLEDGED`, `OBJECTED`, or `EXTENSION_REQUESTED`.
+Consumer responses should not be blind approvals. A consumer can run local queries, parsers, ORM models, or tests against the proposed future schema before responding `ACKNOWLEDGED`, `OBJECTED`, or `EXTENSION_REQUESTED`. In the reference CLI, `validate-consumer` verifies the target exists and can run an explicit local validation command with declaration context supplied through environment variables.
 
 ## 5. Core Declaration Model
 
@@ -157,6 +157,8 @@ Consumer responses shape the lifecycle:
 - `EXTENSION_REQUESTED` means the consumer accepts the direction but needs more time.
 
 SEIP does not prescribe how teams negotiate. It records the result in Git and makes the current state enforceable by CI.
+
+The reference implementation enforces a conservative lifecycle boundary: only declared consumers can respond, responses are accepted only while a declaration is in review, and a declaration reaches `ACCEPTED` only when all declared consumers have acknowledged. `OBJECTED` and `EXTENSION_REQUESTED` keep the declaration in review until the negotiation is resolved.
 
 ![Declaration lifecycle](./diagrams/lifecycle.png)
 
@@ -227,7 +229,9 @@ Both adapters are rendering the same declaration state.
 The `payments-api` team validates its local query code and acknowledges:
 
 ```bash
-npx seip validate-consumer seip_retype_transaction_value --against ./src/queries/
+npx seip validate-consumer seip_retype_transaction_value \
+  --against ./src/queries/ \
+  --command "npm test -- --schema-change"
 npx seip respond seip_retype_transaction_value \
   --team payments-api \
   --status ACKNOWLEDGED \
@@ -237,7 +241,9 @@ npx seip respond seip_retype_transaction_value \
 The `risk-service` team objects because fraud models require decimal precision:
 
 ```bash
-npx seip validate-consumer seip_retype_transaction_value --against ./models/
+npx seip validate-consumer seip_retype_transaction_value \
+  --against ./models/ \
+  --command "npm test -- --fraud-model-contract"
 npx seip respond seip_retype_transaction_value \
   --team risk-service \
   --status OBJECTED \
@@ -269,6 +275,8 @@ The smallest useful adoption wedge is a CI gate. Teams can add SEIP without roll
 
 This immediately gives one important property: CI can fail undeclared breaking changes before merge.
 
+For a breaking change to count as declared, the matching declaration must itself be valid, marked as breaking, use a compatible declaration type, include required migration metadata, and not be withdrawn or rejected. This prevents a weak placeholder declaration from accidentally satisfying the CI gate.
+
 A practical rollout is:
 
 1. Add `seip validate` to CI.
@@ -290,6 +298,7 @@ npx seip diff schema-v1.json schema-v2.json --json
 npx seip validate schema-v1.json schema-v2.json --json
 npx seip status seip_retype_transaction_value --json
 npx seip log seip_retype_transaction_value --json
+npx seip validate-consumer seip_retype_transaction_value --against ./src/queries --json
 npx seip notify seip_retype_transaction_value --adapter github --json
 ```
 
@@ -306,7 +315,7 @@ The producer can declare:
 - proposed review, deprecation, and removal dates
 - consumer response state
 
-Consumers still own their local migration work. One consumer may need a simple field rename. Another may need a backfill, reindex, parser change, or model retraining. SEIP gives those consumers a durable place to respond and gives CI a durable state to enforce.
+Consumers still own their local migration work. One consumer may need a simple field rename. Another may need a backfill, reindex, parser change, or model retraining. SEIP gives those consumers a durable place to respond and gives CI a durable state to enforce. The consumer validation hook is deliberately command-based so teams can connect their existing parser tests, query checks, dbt builds, contract tests, or model rehearsals instead of waiting for SEIP to understand every downstream runtime.
 
 ## 12. Current Limitations
 
@@ -314,9 +323,9 @@ The reference implementation is intentionally small.
 
 Current limits include:
 
-- Diffing is generic and not source-system-specific.
+- Diffing is generic and not source-system-specific, even though it now recognizes common compatibility tightening patterns and common JSON Schema object inputs. It is not a full JSON Schema dialect engine; remote references, full `oneOf` or `anyOf` semantics, Avro compatibility modes, dbt model lineage, and SQL DDL parsing remain adapter-specific.
 - Rename detection is heuristic unless explicit rename mappings are supplied.
-- `validate-consumer` is a reference hook rather than a universal contract testing engine.
+- `validate-consumer` verifies a target and can run a local command, but it remains a reference hook rather than a universal contract testing engine.
 - Notification adapters emit payloads; the GitHub adapter does not call the GitHub API directly.
 - Cross-repository authorization and state synchronization remain organization-specific.
 - Review deadline behavior is policy-driven; SEIP does not auto-accept or auto-reject missed responses.
@@ -327,7 +336,7 @@ These limits are appropriate for a protocol that aims to be adopted incrementall
 
 SEIP is a narrow proposal: a schema change declaration format and reference CLI for coordinating breaking changes before rollout.
 
-Its immediate value is operational. CI can distinguish declared breaking changes from undeclared ones. Its broader value is organizational. Producer and consumer teams gain a shared artifact, a reviewable lifecycle, notification hooks for existing collaboration systems, and an audit trail that persists beyond transient coordination channels.
+Its immediate value is operational. CI can distinguish validly declared breaking changes from undeclared or weakly declared ones. Its broader value is organizational. Producer and consumer teams gain a shared artifact, a reviewable lifecycle, notification hooks for existing collaboration systems, and an audit trail that persists beyond transient coordination channels.
 
 The robust version of SEIP is not "Git plus Slack." It is Git as canonical state, CI as enforcement, GitHub as the natural review and notification surface for many teams, Slack as a useful pluggable channel, and declarations as the durable contract between producers and consumers.
 

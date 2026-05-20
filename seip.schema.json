@@ -17,7 +17,10 @@
   ],
   "properties": {
     "seip_version": { "type": "string" },
-    "declaration_id": { "type": "string" },
+    "declaration_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
     "created_at": { "type": "string", "format": "date-time" },
     "status": {
       "type": "string",
@@ -52,7 +55,11 @@
             "required": ["object", "property"],
             "properties": {
               "object": { "type": "string" },
-              "property": { "type": "string" }
+              "property": { "type": "string" },
+              "change_type": { "type": "string" },
+              "lossy": { "type": "boolean" },
+              "before_type": { "type": ["string", "null"] },
+              "after_type": { "type": ["string", "null"] }
             }
           }
         },

@@ -1,0 +1,25 @@
+name: SEIP Validate
+description: Validate schema changes with the Schema Evolution Intent Protocol.
+
+inputs:
+  before-schema:
+    description: Path to the base or previous schema JSON file.
+    required: true
+  after-schema:
+    description: Path to the changed schema JSON file.
+    required: true
+  seip-args:
+    description: Additional arguments passed to `seip validate`, such as `--strict --json`.
+    required: false
+    default: "--strict"
+
+runs:
+  using: composite
+  steps:
+    - name: Validate schema change intent
+      shell: bash
+      run: |
+        node $GITHUB_ACTION_PATH/bin/seip.mjs validate \
+          "${{ inputs.before-schema }}" \
+          "${{ inputs.after-schema }}" \
+          ${{ inputs.seip-args }}

@@ -22,6 +22,7 @@ test('full workflow demo exercises CI, notifications, responses, and closure', (
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /Full-Blown Demo/);
+  assert.match(result.stdout, /CI policy requires ACCEPTED status and required consumer acknowledgements/);
   assert.match(result.stdout, /CI gate blocks undeclared breaking change/);
   assert.match(result.stdout, /GitHub PR comment \/ Actions summary/);
   assert.match(result.stdout, /Slack channel dry-run/);
@@ -30,6 +31,13 @@ test('full workflow demo exercises CI, notifications, responses, and closure', (
   assert.match(result.stdout, /ACCEPTED/);
   assert.match(result.stdout, /COMPLETED/);
   assert.match(result.stdout, /No SEIP server, database, or notification state store required/);
+});
+
+test('full workflow demo uses a process-isolated default workspace', () => {
+  const result = runDemo();
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /Workspace: .*seip-full-blown-demo-\d+/);
 });
 
 test('full workflow demo can use an isolated workspace from SEIP_DEMO_DIR', () => {

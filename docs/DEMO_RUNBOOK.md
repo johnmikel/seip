@@ -82,13 +82,14 @@ Expected result:
 
 - Exit code `0`.
 - Final output includes `SEIP Full-Blown Demo`.
+- Output includes `CI policy requires ACCEPTED status and required consumer acknowledgements.`
 - Final declaration status is `COMPLETED`.
 - Final summary includes `No SEIP server, database, or notification state store required.`
 
-The demo writes to:
+By default, the demo writes to a process-isolated workspace:
 
 ```text
-/tmp/seip-full-blown-demo
+/tmp/seip-full-blown-demo-<pid>
 ```
 
 It deletes and recreates that folder every time it runs.
@@ -137,6 +138,10 @@ transaction.value (retype) has no Schema Change Declaration
 Say:
 
 > "This is the first win. Before we build notifications, dashboards, or culture around it, CI already stops the surprise breaking change."
+
+Also say:
+
+> "For the demo, CI is configured to require an accepted declaration and acknowledgements from payments, risk, and analytics. A placeholder declaration is not enough."
 
 ### Step 3: The Declaration Is Created
 
@@ -201,7 +206,7 @@ Say:
 
 Important limitation to say out loud:
 
-> "`validate-consumer` is the integration point, not a universal validator. In a real rollout each consumer wires this step to their own parser tests, queries, dbt models, contract tests, or model checks before responding."
+> "`validate-consumer` is the integration point, not a universal validator. The reference CLI verifies the consumer target exists and can run a supplied local validation command. In a real rollout each consumer wires this step to their own parser tests, queries, dbt models, contract tests, or model checks before responding."
 
 ### Step 6: The Change Closes
 
@@ -295,11 +300,11 @@ No. It emits Markdown. You can pipe that Markdown to a PR comment, `$GITHUB_STEP
 
 ### Is consumer validation real?
 
-The demo shows the validation hook and lifecycle. The reference CLI currently simulates the validation internals. Real teams would connect `validate-consumer` to local queries, parser tests, ORM checks, dbt models, or contract tests.
+The demo shows the validation hook and lifecycle. The reference CLI verifies the target path, supports `--command` for real local checks, and can record `CONSUMER_VALIDATED` evidence when teams use `--record --team <team>`. Real teams connect `validate-consumer` to local queries, parser tests, ORM checks, dbt models, contract tests, or model rehearsals.
 
 ### What should an adopter copy first?
 
-Start with the CI gate and declaration lifecycle. Use `examples/github-actions-template.yml` as a starting point, then add `seip notify` only after the team has agreed where declarations should be surfaced.
+Start with the CI gate and declaration lifecycle. Use `action.yml` when consuming this repository as a composite GitHub Action, or `examples/github-actions-template.yml` when vendoring/running the CLI directly. Add `seip notify` only after the team has agreed where declarations should be surfaced.
 
 ## Verification
 
@@ -328,10 +333,10 @@ Run the command from the repository root. The demo resolves the CLI at `bin/seip
 
 ### CI validation unexpectedly passes in step 3
 
-Remove the demo workspace and rerun:
+Remove demo workspaces and rerun:
 
 ```bash
-rm -rf /tmp/seip-full-blown-demo
+rm -rf /tmp/seip-full-blown-demo-*
 npm run demo
 ```
 
@@ -357,10 +362,10 @@ For a short presentation, focus on:
 
 ## Cleanup
 
-The demo workspace can be removed at any time:
+Demo workspaces can be removed at any time:
 
 ```bash
-rm -rf /tmp/seip-full-blown-demo
+rm -rf /tmp/seip-full-blown-demo-*
 ```
 
 No repository files are modified by running the demo.

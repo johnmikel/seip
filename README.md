@@ -10,7 +10,8 @@ SEIP is not a notification platform. The reference CLI can emit GitHub Markdown 
 
 ## What You Get
 
-- **Lossy type detection:** CI can distinguish safe additions or widening retypes from lossy type changes.
+- **Compatibility-risk detection:** CI can distinguish safe additions or widening retypes from lossy type changes, requiredness tightening, nullability tightening, enum narrowing, and format changes.
+- **JSON Schema support:** The reference diff accepts SEIP object/table fixtures and common JSON Schema object inputs, including local `$ref`, `$defs`, nested object fields, array item fields, and simple `allOf` composition.
 - **Git-native declarations:** Breaking intent, timelines, consumers, responses, and audit events live in version control.
 - **Policy enforcement:** `seip validate` fails undeclared breaking changes before merge.
 - **Consumer responses:** Downstream teams can acknowledge, object, or request extensions through a shared lifecycle.
@@ -21,12 +22,13 @@ SEIP is not a notification platform. The reference CLI can emit GitHub Markdown 
 For platform and data engineering teams, the smallest useful rollout is:
 
 1. Run the full workflow demo with `npm run demo`.
-2. Add `seip validate` as a CI gate for schema changes.
-3. Require a SEIP declaration for breaking changes.
-4. Surface declarations in GitHub or Slack using `seip notify`.
-5. Require affected consumers to acknowledge, object, or request more time before enforcement.
+2. Run the enterprise stress demo with `npm run demo:enterprise` when you need to show API, data, analytics, and ML consumers in one rollout.
+3. Add `seip validate` as a CI gate for schema changes.
+4. Require a SEIP declaration for breaking changes.
+5. Surface declarations in GitHub or Slack using `seip notify`.
+6. Require affected consumers to acknowledge, object, or request more time before enforcement.
 
-The canonical demo script is `examples/full-workflow.mjs`, the presenter guide is `docs/DEMO_RUNBOOK.md`, and a starter GitHub Actions workflow lives in `examples/github-actions-template.yml`.
+The canonical quick demo script is `examples/full-workflow.mjs`, the enterprise demo script is `examples/enterprise-workflow.mjs`, presenter guides live in `docs/DEMO_RUNBOOK.md` and `docs/ENTERPRISE_DEMO_RUNBOOK.md`, and a starter GitHub Actions workflow lives in `examples/github-actions-template.yml`.
 
 ## 30-Second Start
 
@@ -81,7 +83,9 @@ npx seip notify seip_retype_value \
 ### 3. Consumer A Acknowledges
 
 ```bash
-npx seip validate-consumer seip_retype_value --against ./src/queries/
+npx seip validate-consumer seip_retype_value \
+  --against ./src/queries/ \
+  --command "npm test -- --schema-change"
 npx seip respond seip_retype_value \
   --team payments-api \
   --status ACKNOWLEDGED \
@@ -91,7 +95,9 @@ npx seip respond seip_retype_value \
 ### 4. Consumer B Objects
 
 ```bash
-npx seip validate-consumer seip_retype_value --against ./models/
+npx seip validate-consumer seip_retype_value \
+  --against ./models/ \
+  --command "npm test -- --schema-change"
 npx seip respond seip_retype_value \
   --team risk-service \
   --status OBJECTED \
@@ -137,6 +143,20 @@ npx seip notify seip_retype_value \
   --json
 ```
 
+## GitHub Action
+
+Use the bundled composite action when SEIP is checked out as a repository action:
+
+```yaml
+- uses: your-org/seip@v0.2
+  with:
+    before-schema: schemas/schema-before.json
+    after-schema: schemas/schema-after.json
+    seip-args: --strict
+```
+
+For vendored or unpublished usage, call the CLI directly as shown in `examples/github-actions-template.yml`.
+
 ## Protocol Docs
 
 - The protocol spec lives in `SPEC.md`.
@@ -151,9 +171,19 @@ npx seip notify seip_retype_value \
 npm run demo
 ```
 
-The demo creates a disposable repo in `/tmp/seip-full-blown-demo` and walks through a complete SEIP lifecycle: CI failure on an undeclared lossy retype, declaration creation, GitHub PR/Actions notification output, Slack dry-run output, consumer validation, objection, negotiation, acceptance, enforcement, closure, and audit history.
+The demo creates a process-isolated disposable repo under `/tmp/seip-full-blown-demo-<pid>` and walks through a complete SEIP lifecycle: CI failure on an undeclared lossy retype, declaration creation, GitHub PR/Actions notification output, Slack dry-run output, consumer validation, objection, negotiation, acceptance, enforcement, closure, and audit history. Its CI policy requires an `ACCEPTED` declaration and acknowledgements from the demo consumers before the final validation passes.
 
 For presenter notes, expected output, troubleshooting, and payload reuse examples, see `docs/DEMO_RUNBOOK.md`.
+
+## Run The Enterprise Demo
+
+```bash
+npm run demo:enterprise
+```
+
+The enterprise demo creates a disposable `CheckoutCompleted.v3` rollout under `/tmp/seip-enterprise-demo-<pid>`. It exercises nested JSON Schema diffing, multiple breaking-change classes, command-based consumer validation evidence, API contract failure, ML replay failure, dbt extension requests, pending analytics consumers, negotiation, acceptance, enforcement, closure, and audit history.
+
+For the complex walkthrough, use `docs/ENTERPRISE_DEMO_RUNBOOK.md`.
 
 ## Release Evidence
 
@@ -161,9 +191,9 @@ Use `docs/RELEASE_CHECKLIST.md` to audit the paper, demo, CI template, tests, an
 
 ## Current Limits
 
-- Diffing is intentionally generic and not source-system-specific.
+- Diffing is intentionally generic. It supports SEIP object/table fixtures and common JSON Schema object inputs, but it is not a full dialect-specific compatibility engine.
 - Rename detection is heuristic unless explicit rename mappings are supplied.
-- `validate-consumer` is a reference hook; teams connect it to local parsers, queries, dbt models, contract tests, or other checks.
+- `validate-consumer` is a reference hook; it verifies the consumer target exists, can run a supplied local command for parsers, queries, dbt models, contract tests, model checks, or other team-owned validation, and can record `CONSUMER_VALIDATED` evidence.
 - Notification adapters emit payloads; the GitHub adapter does not call the GitHub API.
 - Cross-repository authorization and state synchronization are organization-specific.
 

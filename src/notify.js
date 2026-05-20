@@ -219,7 +219,7 @@ export function generateGitHubMarkdown(declarationOrId, options = {}) {
     '### Suggested consumer commands',
     '',
     '```bash',
-    `npx seip validate-consumer ${model.id} --against <path-to-consumer-code>`,
+    `npx seip validate-consumer ${model.id} --against <path-to-consumer-code> --command "<team-owned-check>"`,
     `npx seip respond ${model.id} --team ${firstConsumer} --status ACKNOWLEDGED --message "Validation passed."`,
     `npx seip respond ${model.id} --team ${firstConsumer} --status OBJECTED --message "Describe the blocker."`,
     '```'

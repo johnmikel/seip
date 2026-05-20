@@ -39,14 +39,14 @@ SEIP defines the declaration and lifecycle, not the transport mechanism.
 - CI, pull requests, dashboards, or notification adapters can surface declarations to humans and systems.
 - Notification delivery is optional and outside the core protocol.
 - The protocol does not require a `consumers[].webhook` field.
-- The v0.1 reference implementation operates on the repository that contains the canonical declaration and does not define a universal cross-repository write path.
+- The reference implementation operates on the repository that contains the canonical declaration and does not define a universal cross-repository write path.
 
 ## Declaration object
 
 A declaration MUST be a JSON object with the following top-level fields:
 
 - `seip_version` (string)
-- `declaration_id` (string)
+- `declaration_id` (string; safe file identifier using letters, numbers, dots, underscores, or hyphens)
 - `created_at` (ISO 8601 string)
 - `status` (enum)
 - `producer` (object)
@@ -81,7 +81,7 @@ Recommended transitions:
 2. `change.affected_objects` SHOULD be populated for breaking changes.
 3. `timeline.review_deadline`, `timeline.deprecation_date`, and `timeline.removal_date` MUST be valid ISO 8601 timestamps.
 4. Consumers and responses MUST use the allowed status enums.
-5. `events` SHOULD be append-only and include a timestamp for each lifecycle change.
+5. `events` MUST be present, SHOULD be append-only, and MUST include a timestamp for each lifecycle change.
 6. Review deadlines are informative unless enforced by surrounding CI or organizational policy.
 
 ## Rename mapping
@@ -91,6 +91,14 @@ Renames can be expressed explicitly with `change.renames` entries of the form `{
 ## Type compatibility
 
 Tools MAY classify type changes as lossy or lossless according to local schema semantics. Lossy type transitions SHOULD be treated as breaking. Lossless or widening type transitions MAY be reported without requiring a breaking declaration unless local policy says otherwise.
+
+Reference tools SHOULD also treat compatibility tightening as breaking when it can remove values a consumer may currently rely on. Examples include making an existing field required, changing nullable to non-nullable, narrowing enum values, and changing a field format. These checks remain generic unless a source-specific adapter supplies richer schema semantics.
+
+The v0.2 reference implementation supports SEIP object/table fixtures and common JSON Schema object inputs, including root `properties`, local `$ref` resolution, `$defs` and `definitions`, nested object paths, array item object paths, and simple `allOf` composition. More advanced dialect behavior, such as remote references, full `oneOf` or `anyOf` semantics, Avro compatibility modes, dbt model lineage, or SQL DDL parsing, remains adapter-specific.
+
+## Consumer validation
+
+Consumer validation is an integration hook, not a universal validator. A SEIP-compatible tool MAY verify that the referenced consumer target exists and MAY execute a local validation command supplied by the consumer or organization. Validation commands SHOULD receive the declaration id, declaration path, and consumer target path through machine-readable inputs such as environment variables.
 
 ## Audit events
 
@@ -130,3 +138,5 @@ Custom fields are allowed if they are namespaced, for example `x_company_policy`
 ## Conformance
 
 A tool is SEIP-compatible if it can read and write valid declarations, preserve unknown fields, and respect the lifecycle semantics described above.
+
+For CI enforcement, tools MUST NOT treat invalid declarations, non-breaking declarations, withdrawn declarations, or rejected declarations as valid coverage for breaking changes. Tools SHOULD reject responses from undeclared consumers and SHOULD only accept consumer responses while a declaration is in a reviewable state.

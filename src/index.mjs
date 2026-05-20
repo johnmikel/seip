@@ -15,10 +15,18 @@ export function diffSchemas(before, after, options = {}) {
   const affected = [];
   const strict = !!options.strict;
 
-  const beforeObjects = before.objects || before.tables || [];
-  const afterObjects = after.objects || after.tables || [];
+  const beforeObjects = schemaObjects(before);
+  const afterObjects = schemaObjects(after);
   const objName = o => o.name || o.table;
   const propName = p => p.name || p.column;
+  const snapshot = p => ({
+    name: propName(p),
+    type: p.type,
+    required: p.required,
+    nullable: p.nullable,
+    enum: p.enum,
+    format: p.format
+  });
 
   const beforeMap = new Map(beforeObjects.map(o => [objName(o), o]));
   const afterMap = new Map(afterObjects.map(o => [objName(o), o]));
@@ -59,6 +67,7 @@ export function diffSchemas(before, after, options = {}) {
         // Evaluate if this type transition is inherently lossy
         const lossyTransitions = [
           { from: 'float', to: 'integer' },
+          { from: 'number', to: 'integer' },
           { from: 'string', to: 'boolean' },
           { from: 'string', to: 'integer' },
           { from: 'object', to: 'string' }
@@ -71,8 +80,48 @@ export function diffSchemas(before, after, options = {}) {
         affected.push({
           object: name, property: bName, change_type: 'retype',
           lossy: isLossy,
-          before: { name: bName, type: bProp.type, required: bProp.required },
-          after: { name: bName, type: aProp.type, required: aProp.required }
+          before: snapshot(bProp),
+          after: snapshot(aProp)
+        });
+      }
+      if (bProp.required !== true && aProp.required === true) {
+        affected.push({
+          object: name, property: bName, change_type: 'make_required',
+          before: snapshot(bProp),
+          after: snapshot(aProp)
+        });
+      }
+      if (bProp.nullable === true && aProp.nullable === false) {
+        affected.push({
+          object: name, property: bName, change_type: 'make_non_nullable',
+          before: snapshot(bProp),
+          after: snapshot(aProp)
+        });
+      }
+      if (Array.isArray(bProp.enum) && Array.isArray(aProp.enum)) {
+        const beforeEnum = new Set(bProp.enum);
+        const afterEnum = new Set(aProp.enum);
+        const afterIsSubset = aProp.enum.every(value => beforeEnum.has(value));
+        const beforeIsSubset = bProp.enum.every(value => afterEnum.has(value));
+        if (afterIsSubset && aProp.enum.length < bProp.enum.length) {
+          affected.push({
+            object: name, property: bName, change_type: 'enum_narrow',
+            before: snapshot(bProp),
+            after: snapshot(aProp)
+          });
+        } else if (beforeIsSubset && aProp.enum.length > bProp.enum.length) {
+          affected.push({
+            object: name, property: bName, change_type: 'enum_widen',
+            before: snapshot(bProp),
+            after: snapshot(aProp)
+          });
+        }
+      }
+      if (bProp.format && aProp.format && bProp.format !== aProp.format) {
+        affected.push({
+          object: name, property: bName, change_type: 'format_change',
+          before: snapshot(bProp),
+          after: snapshot(aProp)
         });
       }
     }
@@ -98,13 +147,13 @@ export function diffSchemas(before, after, options = {}) {
         usedAdded.add(propName(renamed));
         affected.push({
           object: name, property: propName(bProp), change_type: 'rename',
-          before: { name: propName(bProp), type: bProp.type, required: bProp.required },
-          after: { name: propName(renamed), type: renamed.type, required: renamed.required }
+          before: snapshot(bProp),
+          after: snapshot(renamed)
         });
       } else {
         affected.push({
           object: name, property: propName(bProp), change_type: 'remove',
-          before: { name: propName(bProp), type: bProp.type, required: bProp.required },
+          before: snapshot(bProp),
           after: {}
         });
       }
@@ -117,7 +166,7 @@ export function diffSchemas(before, after, options = {}) {
       const changeType = strict && aProp.required === true ? 'add_required' : 'add';
       affected.push({
         object: name, property: aName, change_type: changeType,
-        before: {}, after: { name: aName, type: aProp.type, required: aProp.required }
+        before: {}, after: snapshot(aProp)
       });
     }
   }
@@ -132,16 +181,139 @@ export function diffSchemas(before, after, options = {}) {
         property: propName(p),
         change_type: changeType,
         before: {},
-        after: { name: propName(p), type: p.type, required: p.required }
+        after: snapshot(p)
       });
     }
   }
 
-  const breaking = affected.some(a => 
-    ['remove', 'rename', 'add_required'].includes(a.change_type) || 
-    (a.change_type === 'retype' && a.lossy === true)
-  );
+  const breaking = affected.some(isBreakingChange);
   return { affected, breaking };
+}
+
+function schemaObjects(schema) {
+  if (!schema || typeof schema !== 'object') return [];
+  if (Array.isArray(schema.objects)) return schema.objects;
+  if (Array.isArray(schema.tables)) return schema.tables;
+
+  if ((schema.properties && typeof schema.properties === 'object') || Array.isArray(schema.allOf)) {
+    return [jsonSchemaObject(schema.title || 'root', schema, schema)];
+  }
+
+  const objects = [];
+  const definitions = schema.$defs || schema.definitions || {};
+  for (const [name, value] of Object.entries(definitions)) {
+    if (value && typeof value === 'object' && value.properties) {
+      objects.push(jsonSchemaObject(value.title || name, value, schema));
+    }
+  }
+
+  return objects;
+}
+
+function jsonSchemaObject(name, schema, rootSchema) {
+  return {
+    name,
+    properties: flattenJsonSchemaProperties(schema, rootSchema, '')
+  };
+}
+
+function flattenJsonSchemaProperties(schema, rootSchema, prefix, seenRefs = new Set()) {
+  const resolvedSchema = resolveJsonSchema(schema, rootSchema, seenRefs);
+  const required = new Set(Array.isArray(resolvedSchema.required) ? resolvedSchema.required : []);
+  const properties = [];
+
+  for (const [propertyName, propertySchema] of Object.entries(resolvedSchema.properties || {})) {
+    const propertyPath = prefix ? `${prefix}.${propertyName}` : propertyName;
+    const resolvedProperty = resolveJsonSchema(propertySchema || {}, rootSchema, seenRefs);
+    const typeInfo = jsonSchemaType(resolvedProperty);
+    properties.push({
+      name: propertyPath,
+      type: typeInfo.type,
+      required: required.has(propertyName),
+      nullable: typeInfo.nullable,
+      enum: resolvedProperty.enum,
+      format: resolvedProperty.format
+    });
+
+    if (resolvedProperty.properties && typeof resolvedProperty.properties === 'object') {
+      properties.push(...flattenJsonSchemaProperties(resolvedProperty, rootSchema, propertyPath, seenRefs));
+    }
+
+    const itemSchema = resolveJsonSchema(resolvedProperty.items || {}, rootSchema, seenRefs);
+    if (itemSchema.properties && typeof itemSchema.properties === 'object') {
+      properties.push(...flattenJsonSchemaProperties(itemSchema, rootSchema, `${propertyPath}[]`, seenRefs));
+    }
+  }
+
+  return properties;
+}
+
+function resolveJsonSchema(schema, rootSchema, seenRefs = new Set()) {
+  if (!schema || typeof schema !== 'object') return {};
+  let resolved = schema;
+
+  if (schema.$ref) {
+    if (seenRefs.has(schema.$ref)) return schema;
+    seenRefs.add(schema.$ref);
+
+    const target = resolveLocalJsonPointer(rootSchema, schema.$ref);
+    if (!target) return schema;
+
+    const { $ref, ...overrides } = schema;
+    resolved = { ...resolveJsonSchema(target, rootSchema, seenRefs), ...overrides };
+  }
+
+  if (Array.isArray(resolved.allOf)) {
+    const { allOf, ...overrides } = resolved;
+    return mergeJsonSchemas([
+      ...allOf.map(part => resolveJsonSchema(part, rootSchema, new Set(seenRefs))),
+      overrides
+    ]);
+  }
+
+  return resolved;
+}
+
+function mergeJsonSchemas(schemas) {
+  const merged = {};
+  const required = new Set();
+  for (const schema of schemas) {
+    if (!schema || typeof schema !== 'object') continue;
+    Object.assign(merged, schema);
+    if (schema.properties && typeof schema.properties === 'object') {
+      merged.properties = { ...(merged.properties || {}), ...schema.properties };
+    }
+    if (Array.isArray(schema.required)) {
+      for (const field of schema.required) required.add(field);
+    }
+  }
+  if (required.size > 0) merged.required = [...required];
+  return merged;
+}
+
+function resolveLocalJsonPointer(rootSchema, ref) {
+  if (typeof ref !== 'string' || !ref.startsWith('#/')) return null;
+  const parts = ref
+    .slice(2)
+    .split('/')
+    .map(part => part.replace(/~1/g, '/').replace(/~0/g, '~'));
+
+  let current = rootSchema;
+  for (const part of parts) {
+    if (!current || typeof current !== 'object' || !(part in current)) return null;
+    current = current[part];
+  }
+  return current && typeof current === 'object' ? current : null;
+}
+
+function jsonSchemaType(schema) {
+  const rawType = schema.type;
+  const rawTypes = Array.isArray(rawType) ? rawType : rawType ? [rawType] : [];
+  const nonNullTypes = rawTypes.filter(type => type !== 'null');
+  const nullable = rawTypes.includes('null') || schema.nullable === true;
+
+  if (nonNullTypes.length === 0) return { type: 'unknown', nullable };
+  return { type: nonNullTypes.join('|'), nullable };
 }
 
 // ── File Store ────────────────────────────────────────────────────────────────
@@ -212,6 +384,7 @@ export function getConfig(repoRoot = '.') {
 }
 
 export function saveDeclaration(scd, repoRoot = '.') {
+  assertDeclarationId(scd.declaration_id);
   const dir = ensureSeipDir(repoRoot);
   const filepath = join(dir, `${scd.declaration_id}.json`);
   writeFileSync(filepath, JSON.stringify(scd, null, 2) + '\n');
@@ -219,6 +392,7 @@ export function saveDeclaration(scd, repoRoot = '.') {
 }
 
 export function loadDeclaration(id, repoRoot = '.') {
+  assertDeclarationId(id);
   const filepath = join(getSeipDir(repoRoot), `${id}.json`);
   if (!existsSync(filepath)) return null;
   return JSON.parse(readFileSync(filepath, 'utf-8'));
@@ -241,6 +415,7 @@ export function createDeclaration({
   deprecationDate, removalDate, producerTeam,
   producerContact, consumers, actor
 }) {
+  if (id) assertDeclarationId(id);
   if (breaking && !migrationStrategy) {
     throw new Error('Breaking changes require a migration strategy');
   }
@@ -322,10 +497,16 @@ export function respond(scd, { team, status, message, estimatedEffort, requested
   if (!ALLOWED_RESPONSE_STATUSES.has(normalizedStatus)) {
     throw new Error(`Invalid response status: ${status}`);
   }
+  if (!['PROPOSED', 'UNDER_REVIEW'].includes(scd.status)) {
+    throw new Error(`Cannot respond: status is ${scd.status}`);
+  }
 
   const fromStatus = scd.status;
   const consumer = scd.consumers.find(c => c.team === team);
-  if (consumer) consumer.status = normalizedStatus;
+  if (!consumer) {
+    throw new Error(`${team} is not a declared consumer for ${scd.declaration_id}`);
+  }
+  consumer.status = normalizedStatus;
 
   scd.responses.push({
     team, status: normalizedStatus, message,
@@ -334,13 +515,13 @@ export function respond(scd, { team, status, message, estimatedEffort, requested
     requested_deadline: requestedDeadline
   });
 
-  if (normalizedStatus === 'OBJECTED') {
+  if (['OBJECTED', 'EXTENSION_REQUESTED'].includes(normalizedStatus)) {
     scd.status = 'UNDER_REVIEW';
   }
 
-  const allResponded = scd.consumers.every(c => c.status !== 'PENDING');
-  const anyObjected = scd.consumers.some(c => c.status === 'OBJECTED');
-  if (allResponded && !anyObjected) {
+  const allAcknowledged = scd.consumers.length > 0 &&
+    scd.consumers.every(c => c.status === 'ACKNOWLEDGED');
+  if (allAcknowledged) {
     scd.status = 'ACCEPTED';
   }
 
@@ -426,10 +607,26 @@ export function validate(diff, declarations, options = {}) {
 
   const statusOrder = ['DRAFT', 'PROPOSED', 'UNDER_REVIEW', 'ACCEPTED', 'ENFORCING', 'COMPLETED'];
   const statusRank = status => statusOrder.indexOf(status);
+  const declarationValidation = new Map();
 
-  const matchesAffected = (scd, change) => {
+  for (const scd of declarations) {
+    const result = validateDeclaration(scd);
+    declarationValidation.set(scd, result);
+    if (!result.valid) {
+      const id = scd?.declaration_id || '<unknown>';
+      errors.push(`Declaration ${id} is invalid: ${result.errors.join('; ')}`);
+    }
+  }
+
+  const matchingAffected = (scd, change) => {
     const names = new Set([change.property, change.before?.name, change.after?.name].filter(Boolean));
     const affectedObjects = scd.change?.affected_objects || [];
+    return affectedObjects.filter(a =>
+      a.object === change.object && names.has(a.property)
+    );
+  };
+
+  const matchesAffected = (scd, change) => {
     if (change.change_type === 'rename') {
       const renames = scd.change?.renames || [];
       const renameHit = renames.some(r =>
@@ -439,16 +636,27 @@ export function validate(diff, declarations, options = {}) {
       );
       if (renameHit) return true;
     }
-    return affectedObjects.some(a =>
-      a.object === change.object && names.has(a.property)
-    );
+    return matchingAffected(scd, change).length > 0;
+  };
+
+  const matchesChangeType = (scd, change) => {
+    const matchingEntries = matchingAffected(scd, change);
+    const entryTypes = matchingEntries.map(a => a.change_type).filter(Boolean);
+    if (entryTypes.length > 0 && !entryTypes.some(type => type === change.change_type)) {
+      return false;
+    }
+
+    const allowedDeclarationTypes = declarationTypesForChange(change);
+    return allowedDeclarationTypes.has(scd.change?.type);
   };
 
   const minStatus = options.min_status || 'DRAFT';
   const requiredConsumers = options.required_consumers || [];
 
   const isEligibleDeclaration = scd => {
+    if (!declarationValidation.get(scd)?.valid) return false;
     if (['WITHDRAWN', 'REJECTED'].includes(scd.status)) return false;
+    if (scd.change?.breaking !== true) return false;
     const rank = statusRank(scd.status);
     const minRank = statusRank(minStatus);
     if (rank === -1 || minRank === -1) return false;
@@ -461,15 +669,13 @@ export function validate(diff, declarations, options = {}) {
     });
   };
 
-  const breakingChanges = diff.affected.filter(a =>
-    ['remove', 'rename', 'add_required'].includes(a.change_type) || 
-    (a.change_type === 'retype' && a.lossy === true)
-  );
+  const breakingChanges = diff.affected.filter(isBreakingChange);
 
   for (const change of breakingChanges) {
     const covered = declarations.some(scd =>
       isEligibleDeclaration(scd) &&
-      matchesAffected(scd, change)
+      matchesAffected(scd, change) &&
+      matchesChangeType(scd, change)
     );
     if (!covered) {
       const detail = change.change_type === 'rename' && change.after?.name
@@ -477,7 +683,7 @@ export function validate(diff, declarations, options = {}) {
         : change.property;
       const typeHint = change.change_type === 'add_required' ? 'add' : change.change_type;
       errors.push(
-        `BREAKING: ${change.object}.${detail} (${change.change_type}) has no Schema Change Declaration. ` +
+        `BREAKING: ${change.object}.${detail} (${change.change_type}) has no valid Schema Change Declaration. ` +
         `Create one with: seip create --breaking --summary "..." --type ${typeHint}`
       );
     }
@@ -486,7 +692,7 @@ export function validate(diff, declarations, options = {}) {
   const nonBreaking = diff.affected.filter(a => a.change_type === 'add');
   for (const change of nonBreaking) {
     const covered = declarations.some(scd =>
-      scd.change.affected_objects.some(a =>
+      scd.change?.affected_objects?.some(a =>
         a.object === change.object && a.property === change.property
       )
     );
@@ -526,6 +732,42 @@ function isIsoDate(value) {
   return !Number.isNaN(Date.parse(value));
 }
 
+export function isValidDeclarationId(id) {
+  return typeof id === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(id) &&
+    !id.includes('..');
+}
+
+function assertDeclarationId(id) {
+  if (!isValidDeclarationId(id)) {
+    throw new Error(`Invalid declaration_id: ${id}`);
+  }
+}
+
+export function isBreakingChange(change) {
+  return BREAKING_CHANGE_TYPES.has(change.change_type) ||
+    (change.change_type === 'retype' && change.lossy === true);
+}
+
+function declarationTypesForChange(change) {
+  if (change.change_type === 'add_required') return new Set(['add', 'restructure']);
+  if (['make_required', 'make_non_nullable', 'enum_narrow'].includes(change.change_type)) {
+    return new Set(['restructure']);
+  }
+  if (change.change_type === 'format_change') return new Set(['retype', 'restructure']);
+  return new Set([change.change_type, 'restructure']);
+}
+
+const BREAKING_CHANGE_TYPES = new Set([
+  'remove',
+  'rename',
+  'add_required',
+  'make_required',
+  'make_non_nullable',
+  'enum_narrow',
+  'format_change'
+]);
+
 export function validateDeclaration(scd) {
   const errors = [];
   const warnings = [];
@@ -536,7 +778,11 @@ export function validateDeclaration(scd) {
   }
 
   if (!scd.seip_version) errors.push('Missing seip_version.');
-  if (!scd.declaration_id) errors.push('Missing declaration_id.');
+  if (!scd.declaration_id) {
+    errors.push('Missing declaration_id.');
+  } else if (!isValidDeclarationId(scd.declaration_id)) {
+    errors.push('Invalid declaration_id. Use letters, numbers, dots, underscores, or hyphens; do not use path separators.');
+  }
   if (!scd.created_at) errors.push('Missing created_at.');
   if (scd.created_at && !isIsoDate(scd.created_at)) errors.push('created_at is not a valid ISO date.');
   if (!ALLOWED_STATUSES.has(scd.status)) errors.push(`Invalid status: ${scd.status}`);
@@ -546,7 +792,7 @@ export function validateDeclaration(scd) {
   if (!ALLOWED_CHANGE_TYPES.has(change.type)) errors.push(`Invalid change.type: ${change.type}`);
   if (typeof change.breaking !== 'boolean') errors.push('Missing or invalid change.breaking (boolean).');
 
-  const affected = change.affected_objects || [];
+  const affected = change.affected_objects;
   if (!Array.isArray(affected)) {
     errors.push('change.affected_objects must be an array.');
   } else if (change.breaking && affected.length === 0) {
@@ -577,7 +823,7 @@ export function validateDeclaration(scd) {
   const producer = scd.producer || {};
   if (!producer.team) errors.push('Missing producer.team.');
 
-  const consumers = scd.consumers || [];
+  const consumers = scd.consumers;
   if (!Array.isArray(consumers)) {
     errors.push('consumers must be an array.');
   } else {
@@ -587,20 +833,21 @@ export function validateDeclaration(scd) {
     }
   }
 
-  const responses = scd.responses || [];
+  const responses = scd.responses;
   if (!Array.isArray(responses)) {
     errors.push('responses must be an array.');
   } else {
     for (const r of responses) {
       if (!r.team || !r.status) errors.push('responses entries must include team and status.');
       if (r.status && !ALLOWED_RESPONSE_STATUSES.has(r.status)) errors.push(`Unknown response status: ${r.status}`);
+      if (!r.responded_at) errors.push('responses.responded_at is required.');
       if (r.responded_at && !isIsoDate(r.responded_at)) errors.push('responses.responded_at is not a valid ISO date.');
     }
   }
 
   const events = scd.events;
   if (!Array.isArray(events)) {
-    warnings.push('events array missing; audit trail not available.');
+    errors.push('events array missing; audit trail not available.');
   } else {
     for (const e of events) {
       if (!e.type) errors.push('events entries must include type.');

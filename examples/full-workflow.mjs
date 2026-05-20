@@ -29,7 +29,7 @@ const RD = '\x1b[31m';
 const YL = '\x1b[33m';
 const CY = '\x1b[36m';
 
-const DEMO_DIR = process.env.SEIP_DEMO_DIR || '/tmp/seip-full-blown-demo';
+const DEMO_DIR = process.env.SEIP_DEMO_DIR || `/tmp/seip-full-blown-demo-${process.pid}`;
 const CLI = join(process.cwd(), 'bin', 'seip.mjs');
 const REPO_URL = 'https://github.com/acme/ledger-api';
 const DECLARATION_ID = 'seip_transaction_value_precision';
@@ -106,6 +106,24 @@ function writeDemoSchemas() {
   return { schemaV1, schemaV2 };
 }
 
+function configureDemoPolicy() {
+  const config = {
+    defaults: {
+      producer: 'ledger-api',
+      review_days: 7,
+      deprecate_days: 30,
+      remove_days: 60
+    },
+    policy: {
+      strict_required_additions: true,
+      min_status: 'ACCEPTED',
+      required_consumers: ['payments-api', 'risk-service', 'analytics']
+    }
+  };
+  writeFileSync(join(DEMO_DIR, '.seip', 'config.json'), JSON.stringify(config, null, 2) + '\n');
+  console.log(`${GR}CI policy requires ACCEPTED status and required consumer acknowledgements.${R}`);
+}
+
 function enrichDeclaration(schemaV1, schemaV2) {
   const declaration = loadDeclaration(DECLARATION_ID, DEMO_DIR);
   const diff = diffSchemas(schemaV1, schemaV2, { strict: true });
@@ -155,6 +173,13 @@ function printNotificationSnippet(title, output, maxLines = 26) {
 if (existsSync(DEMO_DIR)) rmSync(DEMO_DIR, { recursive: true, force: true });
 mkdirSync(DEMO_DIR, { recursive: true });
 const { schemaV1, schemaV2 } = writeDemoSchemas();
+for (const consumerPath of [
+  'services/payments/queries',
+  'services/risk/models',
+  'warehouse/dbt/models'
+]) {
+  mkdirSync(join(DEMO_DIR, consumerPath), { recursive: true });
+}
 
 console.log();
 console.log(`${B}============================================================${R}`);
@@ -167,6 +192,7 @@ console.log(`${D}Scenario: ledger-api proposes a lossy retype consumed by paymen
 
 section('Step 1 - Initialise SEIP in the demo repo');
 run(`node ${CLI} init`);
+configureDemoPolicy();
 
 section('Step 2 - Diff schemas and expose lossy type risk');
 run(`node ${CLI} diff schema-v1.json schema-v2.json --strict`);

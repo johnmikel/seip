@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -160,6 +160,99 @@ test('seip respond rejects invalid statuses', () => {
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr || result.stdout, /Invalid response status/);
+});
+
+test('seip create rejects unsafe declaration IDs', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'seip-'));
+  run(process.execPath, [cliPath, 'init'], cwd);
+
+  const result = run(process.execPath, [
+    cliPath, 'create',
+    '--id', '../escape',
+    '--summary', 'Bad id'
+  ], cwd);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr || result.stdout, /Invalid declaration_id/);
+});
+
+test('seip create supports --flag=value arguments', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'seip-'));
+  run(process.execPath, [cliPath, 'init'], cwd);
+
+  const result = run(process.execPath, [
+    cliPath, 'create',
+    '--id=seip_equals_flags',
+    '--summary=Created with equals flags',
+    '--producer=ledger-api',
+    '--json'
+  ], cwd);
+
+  assert.equal(result.status, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.declaration_id, 'seip_equals_flags');
+});
+
+test('seip validate-consumer fails when target path is missing', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'seip-'));
+  run(process.execPath, [cliPath, 'init'], cwd);
+  writeDeclaration(cwd);
+
+  const result = run(process.execPath, [
+    cliPath, 'validate-consumer',
+    'seip_notify_cli',
+    '--against', join(cwd, 'missing')
+  ], cwd);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr || result.stdout, /Consumer validation path not found/);
+});
+
+test('seip validate-consumer runs an explicit validation command', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'seip-'));
+  run(process.execPath, [cliPath, 'init'], cwd);
+  writeDeclaration(cwd);
+  const consumerDir = join(cwd, 'consumer');
+  mkdirSync(consumerDir);
+
+  const result = run(process.execPath, [
+    cliPath, 'validate-consumer',
+    'seip_notify_cli',
+    '--against', consumerDir,
+    '--command', `${process.execPath} -e "if (!process.env.SEIP_DECLARATION_ID || !process.env.SEIP_CONSUMER_PATH) process.exit(2)"`
+  ], cwd);
+
+  assert.equal(result.status, 0);
+  assert.match(stripAnsi(result.stdout), /Consumer validation command passed/);
+});
+
+test('seip validate-consumer can record validation evidence', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'seip-'));
+  run(process.execPath, [cliPath, 'init'], cwd);
+  writeDeclaration(cwd);
+  const consumerDir = join(cwd, 'consumer');
+  mkdirSync(consumerDir);
+
+  const result = run(process.execPath, [
+    cliPath, 'validate-consumer',
+    'seip_notify_cli',
+    '--team', 'analytics',
+    '--against', consumerDir,
+    '--command', `${process.execPath} -e "console.log('contract ok')"`,
+    '--record',
+    '--json'
+  ], cwd);
+
+  assert.equal(result.status, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.valid, true);
+  assert.equal(parsed.recorded, true);
+  const declaration = JSON.parse(readFileSync(join(cwd, '.seip', 'declarations', 'seip_notify_cli.json')));
+  const event = declaration.events.at(-1);
+  assert.equal(event.type, 'CONSUMER_VALIDATED');
+  assert.equal(event.actor, 'analytics');
+  assert.equal(event.validation.status, 'PASSED');
+  assert.equal(event.validation.command_output, 'contract ok');
 });
 
 test('seip lint --json emits pure JSON output', () => {
