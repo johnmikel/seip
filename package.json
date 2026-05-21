@@ -8,6 +8,7 @@
   "scripts": {
     "demo": "node examples/full-workflow.mjs",
     "demo:enterprise": "node examples/enterprise-workflow.mjs",
+    "demo:repos": "node examples/demo-repos/create-demo-repos.mjs",
     "test": "node --test"
   },
   "keywords": ["seip", "schema", "evolution", "data-contracts", "migration", "breaking-changes"],

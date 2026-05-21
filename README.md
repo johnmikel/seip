@@ -23,12 +23,13 @@ For platform and data engineering teams, the smallest useful rollout is:
 
 1. Run the full workflow demo with `npm run demo`.
 2. Run the enterprise stress demo with `npm run demo:enterprise` when you need to show API, data, analytics, and ML consumers in one rollout.
-3. Add `seip validate` as a CI gate for schema changes.
-4. Require a SEIP declaration for breaking changes.
-5. Surface declarations in GitHub or Slack using `seip notify`.
-6. Require affected consumers to acknowledge, object, or request more time before enforcement.
+3. Generate realistic demo repos with `npm run demo:repos` when you need to exhibit a multi-repo pilot.
+4. Add `seip validate` as a CI gate for schema changes.
+5. Require a SEIP declaration for breaking changes.
+6. Surface declarations in GitHub or Slack using `seip notify`.
+7. Require affected consumers to acknowledge, object, or request more time before enforcement.
 
-The canonical quick demo script is `examples/full-workflow.mjs`, the enterprise demo script is `examples/enterprise-workflow.mjs`, presenter guides live in `docs/DEMO_RUNBOOK.md` and `docs/ENTERPRISE_DEMO_RUNBOOK.md`, and a starter GitHub Actions workflow lives in `examples/github-actions-template.yml`.
+The canonical quick demo script is `examples/full-workflow.mjs`, the enterprise demo script is `examples/enterprise-workflow.mjs`, the generated repo exhibit lives in `examples/demo-repos/create-demo-repos.mjs`, presenter guides live in `docs/DEMO_RUNBOOK.md`, `docs/ENTERPRISE_DEMO_RUNBOOK.md`, and `docs/DEMO_REPOS_RUNBOOK.md`, and a starter GitHub Actions workflow lives in `examples/github-actions-template.yml`.
 
 ## 30-Second Start
 
@@ -184,6 +185,16 @@ npm run demo:enterprise
 The enterprise demo creates a disposable `CheckoutCompleted.v3` rollout under `/tmp/seip-enterprise-demo-<pid>`. It exercises nested JSON Schema diffing, multiple breaking-change classes, command-based consumer validation evidence, API contract failure, ML replay failure, dbt extension requests, pending analytics consumers, negotiation, acceptance, enforcement, closure, and audit history.
 
 For the complex walkthrough, use `docs/ENTERPRISE_DEMO_RUNBOOK.md`.
+
+## Generate Demo Repos
+
+```bash
+npm run demo:repos
+```
+
+The demo-repos exhibit creates a disposable multi-repo workspace under `/tmp/seip-demo-repos-<pid>` with `commerce-events`, `partner-api`, `payments-ledger`, `warehouse-dbt`, `fraud-models`, and `mobile-analytics`. Each directory is initialized as its own Git repo and contains realistic schema, contract, model, or validation files. The generator then runs a full SEIP scenario from the producer repo and leaves the generated repos ready to inspect.
+
+For the multi-repo walkthrough, use `docs/DEMO_REPOS_RUNBOOK.md`.
 
 ## Release Evidence
 
