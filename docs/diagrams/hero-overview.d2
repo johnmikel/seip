@@ -4,11 +4,11 @@ vars: {
   }
 }
 
-direction: down
+direction: right
 
 producer: {
   label: "Producer workflow"
-  direction: right
+  direction: down
   style.fill: "#F8EEF8"
   style.stroke: "#5A3D5C"
 
@@ -36,7 +36,7 @@ producer: {
 
 canonical: {
   label: "Canonical declaration"
-  direction: right
+  direction: down
   style.fill: "#F0E3F3"
   style.stroke: "#5A3D5C"
 
@@ -59,16 +59,44 @@ canonical: {
   declaration -> repo: "stored in"
 }
 
+pilot: {
+  label: "Generated pilot repos"
+  direction: down
+  style.fill: "#F5EBF7"
+  style.stroke: "#5A3D5C"
+
+  demo: "demo:repos\nmulti-repo exhibit\n "
+  repos: "Producer + consumers\nvalidation evidence\n "
+  agents: "CI / agents\ninspect JSON\n "
+  demo.icon: "icons/repository.svg"
+  repos.icon: "icons/consumers.svg"
+  agents.icon: "icons/ci.svg"
+
+  demo.style.fill: "#FFFDFE"
+  repos.style.fill: "#FFFDFE"
+  agents.style.fill: "#FFFDFE"
+
+  demo.style.shadow: true
+  repos.style.shadow: true
+  agents.style.shadow: true
+  demo.style.font-size: 18
+  repos.style.font-size: 18
+  agents.style.font-size: 18
+
+  demo -> repos
+  repos -> agents
+}
+
 review: {
   label: "Review and enforcement"
-  direction: right
+  direction: down
   style.fill: "#EAD9EE"
   style.stroke: "#5A3D5C"
 
   ci: "CI validation\n \n "
-  consumers: "Consumer responses\n \n "
+  consumers: "Consumer responses\nvalidated evidence\n "
   lifecycle: "Proposal -> review -> enforcement"
-  audit: "Audit trail\n \n "
+  audit: "Audit trail\nCONSUMER_VALIDATED\n "
   ci.icon: "icons/ci.svg"
   consumers.icon: "icons/consumers.svg"
   audit.icon: "icons/audit.svg"
@@ -93,5 +121,7 @@ review: {
 }
 
 producer.create -> canonical.declaration
-canonical.declaration -> review.ci
-canonical.declaration -> review.consumers
+canonical.repo -> pilot.demo
+canonical.repo -> review.ci
+pilot.repos -> review.consumers
+pilot.agents -> review.ci

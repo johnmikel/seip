@@ -18,6 +18,7 @@ The canonical use case is:
 | Full demonstration | `examples/full-workflow.mjs` | Run `npm run demo`. |
 | Enterprise stress demonstration | `examples/enterprise-workflow.mjs` | Run `npm run demo:enterprise`. |
 | Multi-repo exhibit | `examples/demo-repos/create-demo-repos.mjs` | Run `npm run demo:repos`. |
+| Real pilot integration path | `docs/PILOT_INTEGRATION_GUIDE.md` | Confirm it defines a producer, consumers, CI policy progression, validation evidence, agentic boundaries, and pilot review artifacts. |
 | Full use case | `docs/DEMO_RUNBOOK.md`, `docs/ENTERPRISE_DEMO_RUNBOOK.md`, `docs/DEMO_REPOS_RUNBOOK.md` | Confirm the runbooks cover producer, CI, declaration, GitHub, Slack, consumers, objection, extension requests, validation evidence, negotiation, enforcement, closure, audit, and multi-repo inspection. |
 | Adoption entry point | `README.md` | Confirm the README has an adoption path, quick start, demo link, CI link, and limitations. |
 | CI adoption starting point | `action.yml`, `examples/github-actions-template.yml` | Confirm the composite action and workflow template both invoke `seip validate` and explain local/vendored usage. |
@@ -49,6 +50,7 @@ Expected evidence:
 - Demo output includes `SEIP Full-Blown Demo`, `CI policy requires ACCEPTED status and required consumer acknowledgements`, `UNDER_REVIEW`, `ACCEPTED`, `COMPLETED`, and `No SEIP server, database, or notification state store required.`
 - Enterprise demo output includes `SEIP Enterprise Demo`, `CheckoutCompleted.v3`, `CONSUMER_VALIDATED`, `OBJECTED`, `EXTENSION_REQUESTED`, `ACCEPTED`, `COMPLETED`, and `Cross-runtime schema coordination`.
 - Demo-repos output includes `SEIP Demo Repos Exhibit`, `commerce-events`, `CONSUMER_VALIDATED`, `OBJECTED`, `EXTENSION_REQUESTED`, `COMPLETED`, and `Generated repos are ready to inspect`.
+- `docs/PILOT_INTEGRATION_GUIDE.md` gives a concrete path from demo repos to one real producer and at least two real consumers.
 - `git status --short` contains only intentional release files and known local experimental files.
 
 ## Known Non-Goals For This Release

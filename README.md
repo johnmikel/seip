@@ -28,8 +28,9 @@ For platform and data engineering teams, the smallest useful rollout is:
 5. Require a SEIP declaration for breaking changes.
 6. Surface declarations in GitHub or Slack using `seip notify`.
 7. Require affected consumers to acknowledge, object, or request more time before enforcement.
+8. Use `docs/PILOT_INTEGRATION_GUIDE.md` when moving from demos into one real producer and two or more real consumers.
 
-The canonical quick demo script is `examples/full-workflow.mjs`, the enterprise demo script is `examples/enterprise-workflow.mjs`, the generated repo exhibit lives in `examples/demo-repos/create-demo-repos.mjs`, presenter guides live in `docs/DEMO_RUNBOOK.md`, `docs/ENTERPRISE_DEMO_RUNBOOK.md`, and `docs/DEMO_REPOS_RUNBOOK.md`, and a starter GitHub Actions workflow lives in `examples/github-actions-template.yml`.
+The canonical quick demo script is `examples/full-workflow.mjs`, the enterprise demo script is `examples/enterprise-workflow.mjs`, the generated repo exhibit lives in `examples/demo-repos/create-demo-repos.mjs`, presenter guides live in `docs/DEMO_RUNBOOK.md`, `docs/ENTERPRISE_DEMO_RUNBOOK.md`, and `docs/DEMO_REPOS_RUNBOOK.md`, the real-pilot path lives in `docs/PILOT_INTEGRATION_GUIDE.md`, and a starter GitHub Actions workflow lives in `examples/github-actions-template.yml`.
 
 ## 30-Second Start
 

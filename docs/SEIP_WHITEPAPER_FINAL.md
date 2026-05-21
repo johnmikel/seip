@@ -4,9 +4,9 @@
 
 ## Git-Native Coordination For Breaking Schema Changes
 
-**Whitepaper v0.3 · April 2026**
+**Whitepaper v0.3 · May 2026**
 
-*Publication candidate. This version aligns the protocol, documentation, and reference CLI around Git-native state, first-class data type risk, and pluggable notification adapters.*
+*Publication candidate. This version aligns the protocol, documentation, reference CLI, runnable demos, generated multi-repo pilot assets, and pluggable notification adapters around Git-native state and first-class data type risk.*
 
 SEIP defines a Git-native declaration format and reference CLI for making breaking schema changes explicit, reviewable, enforceable, and auditable before rollout.
 
@@ -18,9 +18,11 @@ SEIP, the Schema Evolution Intent Protocol, defines a declaration format and ref
 
 SEIP does not replace schema registries, migration systems, delivery pipelines, or notification platforms. It standardizes the cross-team declaration and lifecycle needed to make schema changes reviewable, enforceable, and auditable across teams.
 
+The current reference package includes a quick lifecycle demo, an enterprise stress demo, and a generated multi-repo exhibit that creates a producer repository plus API, payments, warehouse, machine-learning, and analytics consumer repositories. These assets are intentionally executable rather than illustrative: they let evaluators inspect declaration files, schemas, validation scripts, GitHub Actions examples, consumer evidence, and audit history on disk.
+
 ![SEIP overview](./diagrams/hero-overview.png)
 
-*Figure 0. SEIP keeps declaration state in Git while CI, review surfaces, and adapters consume the same artifact.*
+*Figure 0. SEIP keeps declaration state in Git while CI, generated pilot repos, review surfaces, and adapters consume the same artifact.*
 
 ## 1. Problem Framing
 
@@ -89,6 +91,10 @@ Schema compatibility is often decided by type evolution and constraint changes. 
 ### Consumers Validate Before Acknowledging
 
 Consumer responses should not be blind approvals. A consumer can run local queries, parsers, ORM models, or tests against the proposed future schema before responding `ACKNOWLEDGED`, `OBJECTED`, or `EXTENSION_REQUESTED`. In the reference CLI, `validate-consumer` verifies the target exists and can run an explicit local validation command with declaration context supplied through environment variables.
+
+### Pilot Assets Are Part Of The Product Surface
+
+A protocol intended for real organizations needs more than a happy-path transcript. The reference package includes executable demos at three depths: a quick single-repo lifecycle, an enterprise stress demo with API, data, analytics, and machine-learning consumers, and a generated multi-repo exhibit that produces inspectable repositories with validation evidence. This makes SEIP tangible enough for platform teams, data teams, and agentic automation to evaluate without first building their own sample organization.
 
 ## 5. Core Declaration Model
 
@@ -264,6 +270,18 @@ npx seip close seip_retype_transaction_value \
 
 The audit trail remains in Git.
 
+### Step 7: Exercise The Reference Pilots
+
+The reference package includes progressively richer demos:
+
+```bash
+npm run demo
+npm run demo:enterprise
+npm run demo:repos
+```
+
+`npm run demo` demonstrates the compact lifecycle. `npm run demo:enterprise` stresses one breaking event rollout across API, data, analytics, and ML consumers. `npm run demo:repos` creates an inspectable local organization with `commerce-events`, `partner-api`, `payments-ledger`, `warehouse-dbt`, `fraud-models`, and `mobile-analytics` repositories. The generated repos include schemas, validation commands, CI examples, consumer responses, and final SEIP declaration state.
+
 ## 9. CI-First Adoption Path
 
 The smallest useful adoption wedge is a CI gate. Teams can add SEIP without rolling out a new platform:
@@ -280,14 +298,16 @@ For a breaking change to count as declared, the matching declaration must itself
 A practical rollout is:
 
 1. Add `seip validate` to CI.
-2. Create declarations for breaking changes.
-3. Request reviews from affected consumers.
-4. Emit GitHub or Slack notification payloads if useful.
-5. Tighten policy to require minimum statuses or required consumer acknowledgements.
+2. Run the quick, enterprise, and generated repo demos to establish the operating model.
+3. Create declarations for breaking changes in one pilot repository.
+4. Request reviews from affected consumers and capture validation evidence.
+5. Emit GitHub or Slack notification payloads if useful.
+6. Tighten policy to require minimum statuses or required consumer acknowledgements.
+7. Expand to more producers only after the pilot shows response quality, ownership, and audit history are working.
 
 ![Adoption wedge](./diagrams/adoption-wedge.png)
 
-*Figure 4. Teams can start with a CI gate and add richer review or notification surfaces later.*
+*Figure 4. Teams can start with a CI gate, prove the operating model with generated repos, and add richer review or notification surfaces later.*
 
 ## 10. Automation Interface
 
@@ -303,6 +323,8 @@ npx seip notify seip_retype_transaction_value --adapter github --json
 ```
 
 This lets CI jobs, internal portals, and agents consume the same state humans review in Git.
+
+Agentic actors can use these JSON surfaces to detect undeclared breaking changes, prepare declaration drafts, run consumer validation commands, summarize objections, and post review evidence. SEIP should not give agents a blank-check approval role. The useful boundary is evidence production and state transition assistance: agents can propose, validate, summarize, and record, while organization policy decides which transitions require human review.
 
 ## 11. Migration Scope
 
@@ -328,6 +350,7 @@ Current limits include:
 - `validate-consumer` verifies a target and can run a local command, but it remains a reference hook rather than a universal contract testing engine.
 - Notification adapters emit payloads; the GitHub adapter does not call the GitHub API directly.
 - Cross-repository authorization and state synchronization remain organization-specific.
+- Generated demo repositories are local pilot assets, not a hosted multi-repo control plane. They prove workflow shape and integration points, but production adoption still needs organization-specific repository permissions, CODEOWNERS, branch protection, and CI policy.
 - Review deadline behavior is policy-driven; SEIP does not auto-accept or auto-reject missed responses.
 
 These limits are appropriate for a protocol that aims to be adopted incrementally rather than introduced as a heavyweight platform.
@@ -339,6 +362,8 @@ SEIP is a narrow proposal: a schema change declaration format and reference CLI 
 Its immediate value is operational. CI can distinguish validly declared breaking changes from undeclared or weakly declared ones. Its broader value is organizational. Producer and consumer teams gain a shared artifact, a reviewable lifecycle, notification hooks for existing collaboration systems, and an audit trail that persists beyond transient coordination channels.
 
 The robust version of SEIP is not "Git plus Slack." It is Git as canonical state, CI as enforcement, GitHub as the natural review and notification surface for many teams, Slack as a useful pluggable channel, and declarations as the durable contract between producers and consumers.
+
+The next proof point is a real pilot integration: one producer, two or more actual downstream consumers, one enforced CI gate, and a recorded response cycle that can survive normal engineering pressure. The reference package now includes a pilot integration guide for that transition from generated exhibits to real repositories.
 
 ## Appendix: Diagram Sources
 
