@@ -250,7 +250,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: your-org/seip@v0.2
+      - uses: johnmikel/seip@v0.2.0
         with:
           before-schema: schemas/checkout-completed-v2.schema.json
           after-schema: schemas/checkout-completed-v3.schema.json
