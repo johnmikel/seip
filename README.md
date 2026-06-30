@@ -2,7 +2,7 @@
 
 > A Git-native protocol and zero-dependency Node CLI / GitHub Action that makes breaking schema changes explicit, reviewable in pull requests, and enforceable as a CI gate.
 
-[![CI](https://github.com/your-org/seip/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/seip/actions/workflows/ci.yml)
+[![CI](https://github.com/johnmikel/seip/actions/workflows/ci.yml/badge.svg)](https://github.com/johnmikel/seip/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](#license)
 
 > **Status:** v0.2.0 — reference implementation, not yet published to npm. See [Project status](#project-status) before adopting. Run the CLI from a clone with `node ./bin/seip.mjs …`; the `npx seip …` form will work once the package is published.
@@ -56,7 +56,7 @@ bot, or internal tooling — SEIP is a protocol, not a notification platform.
 No published package exists yet, so the supported path is a clone:
 
 ```bash
-git clone https://github.com/your-org/seip.git
+git clone https://github.com/johnmikel/seip.git
 cd seip
 node ./bin/seip.mjs --help
 ```
