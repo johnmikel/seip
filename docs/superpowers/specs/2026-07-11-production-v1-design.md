@@ -202,7 +202,9 @@ The v1 tool supports stable protocol versions `>=1.0.0 <2.0.0`. A protocol minor
       "schema_kind": "json-schema",
       "target": {
         "object": "transaction",
-        "path": "value"
+        "path": [
+          { "type": "property", "name": "value" }
+        ]
       },
       "kind": "retype",
       "compatibility": "breaking",
@@ -277,7 +279,10 @@ The fingerprint input is:
 {
   "fingerprint_version": "1",
   "schema_kind": "...",
-  "target": { "object": "...", "path": "..." },
+  "target": {
+    "object": "...",
+    "path": [{ "type": "property", "name": "..." }]
+  },
   "kind": "...",
   "before": {},
   "after": {}
@@ -286,15 +291,26 @@ The fingerprint input is:
 
 Compatibility classification, detector name, and detector version are excluded from the hash. The same semantic before/after change therefore retains its identity if classification improves. The change set separately records detector name, version, and completeness.
 
-Canonical JSON uses RFC 8785 JSON Canonicalization Scheme after detector normalization. It rejects non-JSON values, including `undefined`, non-finite numbers, and implementation-specific objects. JSON strings preserve their exact code points; logical object names and path segments are first normalized to Unicode NFC. Absent fields are omitted and are never converted to `null`.
+Canonical JSON uses RFC 8785 JSON Canonicalization Scheme after detector normalization. It rejects non-JSON values, including `undefined`, non-finite numbers, and implementation-specific objects. Strings, logical object names, and property names preserve their exact Unicode code points; SEIP performs no Unicode normalization that could conflate distinct JSON member names. Absent fields are omitted and are never converted to `null`.
 
-`target.object` is a detector-defined logical object name, or `$root` for an unnamed root schema. `target.path` is a SEIP logical pointer: an RFC 6901-style slash-separated path over logical member names, with RFC 6901 escaping and a reserved `*` segment for array items. The empty string addresses the object itself. For example, `/orders/*/total` identifies the `total` member of each item in `orders`.
+`target.object` is an exact detector-defined logical object name, or `$root` for an unnamed root schema. `target.path` is an array of tagged segments, not a delimiter-encoded string:
 
-Detectors normalize snapshots into JSON-only semantic data before hashing. For the built-in JSON Schema detector, type sets, `required`, and `enum` values are de-duplicated and sorted by canonical JSON; numeric constraints use JSON numbers; absent keywords remain absent; and source-document property order is ignored. Arrays with semantic order, such as tuple item schemas, retain their order.
+```ts
+type PathSegment =
+  | { type: "property"; name: string }
+  | { type: "items" }
+  | { type: "tuple_item"; index: number };
+```
 
-The standard change granularity is one atomic `(object, target.path, kind)` change. If a property is both retyped and made required, the detector emits two changes. An object addition or removal emits one object-level change at the empty path with a complete normalized object snapshot. Rename changes contain the old name/path in `before` and the new name/path in `after`. Standard change-kind values and their snapshot requirements are defined in the normalized change-set schema; detector-specific kinds must be namespaced.
+An empty array addresses the object itself. `orders[*].total` is represented as property `orders`, an `items` segment, then property `total`. A literal property named `*`, `/`, `~`, or the empty string remains an ordinary exact property segment and cannot collide with an array marker.
 
-Detection output is sorted by `schema_kind`, object, path, kind, then `change_id`. Declaration order does not affect fingerprints, but generated change sets and migration output use this ordering for reproducibility. Policy recomputes every fingerprint and rejects mismatches. A change in fingerprint canonicalization requires a new `fingerprint_version`; an incompatible canonicalization change requires a protocol major release.
+Detectors normalize snapshots into a schema-defined semantic representation before hashing. Arbitrary source values embedded by keywords such as `enum`, `const`, and numeric constraints use a fully tagged `CanonicalValue` union for null, boolean, string, number, array, and object; an object value is encoded as sorted key/value entries rather than being confused with the tag wrapper itself. Bare JSON numbers are forbidden inside fingerprinted `before` and `after` snapshots. Numeric values use a tagged atom such as `{ "kind": "number", "decimal": "9007199254740993e0" }`, where `decimal` is produced from the source lexeme without IEEE-754 conversion. The canonical form is `[minus]coefficient` followed by `e` and a signed base-10 exponent: the coefficient has no leading or trailing zeroes, zero is `0e0`, and the exponent incorporates the removed fractional digits and trailing zeroes. Thus `1`, `1.0`, and `10e-1` all become `1e0`, while mathematically distinct values remain distinct. Parsing and normalization use arbitrary-precision integer operations. This prevents rounding or tag-shaped source objects from conflating constraints or enum values. A detector unable to preserve a numeric token exactly fails with `SEIP_DETECTOR_NUMERIC_PRECISION` before fingerprinting.
+
+For the built-in JSON Schema detector, type sets, `required`, and `enum` values are de-duplicated and sorted by canonical JSON; absent keywords remain absent; and source-document property order is ignored. Enum and constraint numbers use canonical numeric atoms. Arrays with semantic order, such as tuple item schemas, retain their order.
+
+The standard change granularity is one atomic `(object, target.path, kind)` change. If a property is both retyped and made required, the detector emits two changes. An object addition or removal emits one object-level change at an empty path array with a complete normalized object snapshot. Rename changes contain the old name/path in `before` and the new name/path in `after`. Standard change-kind values and their snapshot requirements are defined in the normalized change-set schema; detector-specific kinds must be namespaced.
+
+Detection output is sorted by the RFC 8785 canonical encodings of `schema_kind`, object, tagged path array, kind, then `change_id`. Declaration order does not affect fingerprints, but generated change sets and migration output use this ordering for reproducibility. Policy recomputes every fingerprint and rejects mismatches. A change in fingerprint canonicalization requires a new `fingerprint_version`; an incompatible canonicalization change requires a protocol major release.
 
 A declaration may contain multiple changes. Every current breaking or unknown change must appear exactly in an eligible declaration. Broad matches on object, property, or change type do not count. Multiple active declarations covering the same change produce an ambiguity diagnostic rather than nondeterministic selection.
 
@@ -341,6 +357,15 @@ SEIP recognizes three provenance modes:
 Imported change sets are untrusted by default. Their compatibility values are treated as `unknown`, and their completeness claim cannot satisfy `declared` or `coordinated`. A local API or CLI caller may explicitly trust an imported set, but that decision is operator-controlled and recorded in the result. The GitHub Action exposes no pull-request-controlled `trust` input.
 
 For pull requests, detector allowlists, executable argv, version constraints, and policy are loaded from the workflow or the verified base revision, never solely from the proposed working-tree configuration. The Action runs trusted external detectors itself. A pull-request file cannot bypass governance by claiming a compatible change or complete traversal.
+
+Trusted execution configuration identifies code provenance, not only a command name. Each executed detector uses one of:
+
+- a workflow-installed tool pinned to an immutable package integrity/digest;
+- an immutable container or Action digest;
+- an executable plus every repository script/module it loads, each with an expected SHA-256 digest in trusted base configuration;
+- a repository detector loaded from the verified base commit into an isolated temporary directory, never executed from the pull-request working tree.
+
+SEIP resolves the executable and declared code artifacts without following symlinks, verifies their digests immediately before execution, records the verified digests in detector provenance, and passes proposed schemas only as data inputs. Interpreters such as `node` or `python` require the script/module artifact to be pinned or staged from the base commit as well as an allowlisted interpreter. Coordinated evaluation fails with `SEIP_DETECTOR_UNTRUSTED_EXECUTABLE` when code provenance cannot be verified. Detector stdout is still schema-validated and fingerprint-recomputed; verified code provenance does not make malformed output acceptable.
 
 ### Built-in JSON Schema detector
 
@@ -432,6 +457,8 @@ For each `(team, validator, change_id)` tuple, the last append-ordered evidence 
 Evidence policy is configured as `none`, `all_consumers`, or `selected`, with optional selected teams and required validator IDs. The default coordinated preset does not require machine evidence unless configured, but acknowledgement and history requirements still apply.
 
 Completed declarations may cover the exact change they coordinated, such as the final removal of a deprecated field. They cannot cover a later retype or removal with a different before/after snapshot because its fingerprint differs.
+
+Coverage precedence is deterministic. For a current `change_id`, if any nonterminal declaration references it, only those active declarations are considered; completed declarations are historical and cannot mask an incomplete new coordination attempt. More than one active declaration is `SEIP_POLICY_AMBIGUOUS_COVERAGE`. If exactly one active declaration exists but is not eligible under the selected preset, policy fails on that declaration. Only when no active declaration references the change may an exact completed declaration provide coverage. Multiple completed historical matches are equivalent; the result reports the one with the latest valid `COMPLETED` event and lists the others as informational history. Withdrawn and rejected declarations never provide coverage.
 
 Configuration is validated against its own schema. Unknown preset names, statuses, consumer teams, or unsupported options are configuration errors, not uncovered-change errors.
 
@@ -537,7 +564,7 @@ In JSON mode, every handled outcome, including policy and operational failures, 
 Exit codes are:
 
 - `0`: success or policy pass;
-- `1`: policy violation;
+- `1`: an expected domain or quality-gate failure, including policy, lint, history-integrity, consumer-test, or migration-check findings;
 - `2`: invalid input, usage, configuration, storage, detector, history, or delivery failure.
 
 Command-specific behavior is:
@@ -592,13 +619,19 @@ The canonical layout remains:
 The Node file store:
 
 - validates declaration IDs before path construction;
-- resolves and containment-checks paths;
+- resolves the caller-supplied repository root once to a canonical real path;
+- rejects symbolic links for `.seip`, `config.json`, `declarations`, declaration files, and every path component below the canonical root;
+- resolves and containment-checks real paths without following an unverified final component;
 - refuses to overwrite on create;
 - writes a temporary sibling file, flushes it, and atomically renames it;
 - supports optimistic expected-digest checks for updates;
 - sorts listings deterministically;
 - reports malformed files individually rather than aborting discovery;
 - never silently repairs or discards invalid data.
+
+Reads inspect each component with `lstat`, open files with no-follow semantics where the platform supports them, verify the opened file identity and real containment, and fail closed if the platform cannot provide an equivalent safe check. Writes create the temporary sibling with exclusive/no-follow flags inside a verified real directory, revalidate the parent before rename, and reject a destination that appeared as a symlink. Notification loading and configuration loading must use this same store rather than constructing paths independently.
+
+Git object reads inspect tree modes and reject symlink entries (`120000`) for `.seip`, configuration, declaration directories, or declaration files. A symlink committed to the base or proposed tree is `SEIP_STORAGE_SYMLINK_REJECTED`, not declaration content.
 
 Explicit replacement or migration operations require a distinct flag and use the same atomic path.
 
@@ -723,8 +756,10 @@ The test suite includes:
 - unsupported keyword and incomplete-detection cases;
 - rename ambiguity;
 - deterministic output and fingerprints;
-- RFC 8785, logical-pointer, Unicode, numeric, absent-versus-null, and unordered-set fingerprint fixtures shared by built-in and external-detector conformance tests;
+- RFC 8785, tagged-path, exact-Unicode, arbitrary-precision numeric, absent-versus-null, and unordered-set fingerprint fixtures shared by built-in and external-detector conformance tests;
+- literal `*`, slash, tilde, empty-name, canonically equivalent Unicode, large-integer, tiny-decimal, and exponent collision cases;
 - untrusted imported change sets that forge compatibility, completeness, detector identity, or input digests;
+- trusted config pointing at a pull-request-replaced script, symlinked executable, changed interpreter module, or digest mismatch;
 - seeded property-based and fuzz tests.
 
 ### Lifecycle and policy
@@ -747,6 +782,7 @@ The test suite includes:
 - optimistic digest conflicts;
 - malformed neighboring files;
 - traversal and containment attacks;
+- symlinked roots, ancestors, directories, files, write destinations, and Git tree entries on every supported platform;
 - prefix integrity for responses, evidence, and events;
 - immutable fields, deletion, frozen accepted intent, and material-update events.
 - missing, shallow, incorrect, and workflow-controlled base-ref behavior.
