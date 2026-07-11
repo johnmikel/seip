@@ -399,12 +399,11 @@ Add:
 
 ```json
 {
-  "engines": { "node": ">=20" },
-  "types": "./dist/index.d.ts"
+  "engines": { "node": ">=20" }
 }
 ```
 
-Do not switch `main` or `exports` until Task 8.
+Defer `types` together with `main`, `exports`, and `files` until Task 8 so intermediate package metadata stays truthful.
 
 - [ ] **Step 6: Ignore build output and install dependencies in CI**
 

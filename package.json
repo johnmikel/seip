@@ -5,7 +5,6 @@
   "type": "module",
   "bin": { "seip": "./bin/seip.mjs" },
   "main": "src/index.mjs",
-  "types": "./dist/index.d.ts",
   "engines": {
     "node": ">=20"
   },
