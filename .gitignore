@@ -1,5 +1,6 @@
 .DS_Store
 node_modules/
+.worktrees/
 
 # Local scratch state produced by ad hoc demo scripts in this tool repo.
 # Adopting projects should track their own .seip/declarations/*.json files.
