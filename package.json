@@ -5,14 +5,30 @@
   "type": "module",
   "bin": { "seip": "./bin/seip.mjs" },
   "main": "src/index.mjs",
+  "types": "./dist/index.d.ts",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.json",
     "demo": "node examples/full-workflow.mjs",
     "demo:enterprise": "node examples/enterprise-workflow.mjs",
     "demo:repos": "node examples/demo-repos/create-demo-repos.mjs",
-    "test": "node --test"
+    "pretest": "npm run build",
+    "test": "node --test",
+    "test:v1": "npm run build && node --test test/v1"
   },
   "keywords": ["seip", "schema", "evolution", "data-contracts", "migration", "breaking-changes"],
   "author": "John Mikel Regida",
   "license": "Apache-2.0",
-  "files": ["bin/", "src/", "examples/", "action.yml", "README.md", "SPEC.md", "seip.schema.json"]
+  "files": ["bin/", "src/", "examples/", "action.yml", "README.md", "SPEC.md", "seip.schema.json"],
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "esbuild": "0.28.1",
+    "fast-check": "4.9.0",
+    "json-schema-to-typescript": "15.0.4",
+    "typescript": "7.0.2"
+  }
 }

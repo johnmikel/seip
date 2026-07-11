@@ -1,5 +1,6 @@
 .DS_Store
 node_modules/
+dist/
 .worktrees/
 
 # Local scratch state produced by ad hoc demo scripts in this tool repo.
