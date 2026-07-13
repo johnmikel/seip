@@ -24,6 +24,11 @@ type Frame = VisitFrame | LeaveFrame;
 
 const invalidJsonMessage = "must be JSON data" as const;
 
+// Bounds work amplification caused only by identity sharing. Containers that
+// occur once contribute equally to unfolded and unique counts, so ordinary
+// large JSON trees do not spend this budget.
+const MAX_SHARED_EXPANSION_OVERHEAD = 4_096;
+
 function escapeJsonPointerToken(token: string): string {
   return token.replace(/~/g, "~0").replace(/\//g, "~1");
 }
@@ -194,6 +199,95 @@ function createSanitizedContainer(source: object): JsonContainer {
     : (Object.create(null) as Record<string, unknown>);
 }
 
+function jsonContainerKeys(container: object): string[] {
+  return Array.isArray(container)
+    ? Array.from({ length: container.length }, (_, index) => String(index))
+    : (Reflect.ownKeys(container) as string[]).sort();
+}
+
+function jsonContainerChildren(container: object): object[] {
+  const children: object[] = [];
+  // Native own-key order is deterministic. Avoid sorting here so estimation
+  // remains linear in the unique container graph; cloning retains sorted keys.
+  for (const key of Reflect.ownKeys(container)) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(container, key);
+    if (descriptor === undefined || !("value" in descriptor)) {
+      throw new Error("validated JSON data changed during work estimation");
+    }
+    if (typeof descriptor.value === "object" && descriptor.value !== null) {
+      children.push(descriptor.value);
+    }
+  }
+  return children;
+}
+
+// Build the unique identity graph once, then evaluate
+// visits(node) = 1 + sum(visits(child)) in reverse topological order. Parallel
+// edges remain in adjacency so sharing is counted without unfolding the DAG.
+function exceedsSharedExpansionBudget(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+
+  const adjacency = new Map<object, object[]>();
+  const indegree = new Map<object, number>([[value, 0]]);
+  const seen = new WeakSet<object>();
+  const pending = [value];
+  const nodes: object[] = [];
+
+  while (pending.length > 0) {
+    const container = pending.pop();
+    if (container === undefined || seen.has(container)) continue;
+    seen.add(container);
+    nodes.push(container);
+
+    const children = jsonContainerChildren(container);
+    adjacency.set(container, children);
+    for (const child of children) {
+      indegree.set(child, (indegree.get(child) ?? 0) + 1);
+      if (!seen.has(child)) pending.push(child);
+    }
+  }
+
+  const topological: object[] = [];
+  const ready = nodes.filter((node) => indegree.get(node) === 0);
+  for (let index = 0; index < ready.length; index += 1) {
+    const container = ready[index];
+    if (container === undefined) continue;
+    topological.push(container);
+
+    for (const child of adjacency.get(container) ?? []) {
+      const remaining = (indegree.get(child) ?? 0) - 1;
+      indegree.set(child, remaining);
+      if (remaining === 0) ready.push(child);
+    }
+  }
+  if (topological.length !== nodes.length) return true;
+
+  const uniqueContainerCount = nodes.length;
+  const saturationLimit =
+    uniqueContainerCount + MAX_SHARED_EXPANSION_OVERHEAD + 1;
+  const unfoldedVisits = new Map<object, number>();
+  for (let index = topological.length - 1; index >= 0; index -= 1) {
+    const container = topological[index];
+    if (container === undefined) continue;
+
+    let visits = 1;
+    for (const child of adjacency.get(container) ?? []) {
+      const childVisits = unfoldedVisits.get(child);
+      if (childVisits === undefined) return true;
+      visits =
+        visits >= saturationLimit - childVisits
+          ? saturationLimit
+          : visits + childVisits;
+    }
+    unfoldedVisits.set(container, visits);
+  }
+
+  return (
+    (unfoldedVisits.get(value) ?? saturationLimit) - uniqueContainerCount >
+    MAX_SHARED_EXPANSION_OVERHEAD
+  );
+}
+
 function cloneJsonData(value: unknown): unknown {
   if (typeof value !== "object" || value === null) return value;
 
@@ -220,10 +314,7 @@ function cloneJsonData(value: unknown): unknown {
     const frame = frames.pop();
     if (frame === undefined) break;
 
-    const keys = Array.isArray(frame.source)
-      ? Array.from({ length: frame.source.length }, (_, index) => String(index))
-      : (Reflect.ownKeys(frame.source) as string[]).sort();
-    for (const key of keys) {
+    for (const key of jsonContainerKeys(frame.source)) {
       const descriptor = Reflect.getOwnPropertyDescriptor(frame.source, key);
       if (descriptor === undefined || !("value" in descriptor)) {
         throw new Error("validated JSON data changed during sanitization");
@@ -256,6 +347,9 @@ export function preflightJsonData(value: unknown): JsonDataPreflightResult {
   }
 
   try {
+    if (exceedsSharedExpansionBudget(value)) {
+      return { ok: false, issue: issue() };
+    }
     return { ok: true, value: cloneJsonData(value) };
   } catch {
     return { ok: false, issue: issue() };

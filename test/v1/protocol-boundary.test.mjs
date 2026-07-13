@@ -33,6 +33,34 @@ function assertJsonBoundaryFailure(result, code, path) {
   ]);
 }
 
+function assertCredentialQueryRejected(result, label) {
+  assertInvalid(result, "SEIP_PROTOCOL_SCHEMA_INVALID");
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.path === "/evidence/0/artifact/uri" &&
+        diagnostic.message ===
+          "must not include credential-bearing query parameters",
+    ),
+    label,
+  );
+}
+
+function buildSharedCanonicalDag(depth) {
+  let node = { kind: "string", value: "leaf" };
+  for (let level = 0; level < depth; level += 1) {
+    node = { kind: "array", items: [node, node] };
+  }
+  return node;
+}
+
+function buildSharedCanonicalDiamonds(depths) {
+  return {
+    kind: "array",
+    items: depths.map(buildSharedCanonicalDag),
+  };
+}
+
 test("requires fingerprint_version to use the normative string identity", async () => {
   const declaration = await loadFixture("valid/minimal-declaration.json");
   const stringVersion = structuredClone(declaration);
@@ -242,6 +270,65 @@ test("canonicalizes extra array-property diagnostics", async () => {
   assert.deepEqual(results[0], results[1]);
 });
 
+test("bounds unfolded work from shared acyclic canonical DAGs", async () => {
+  const declaration = await loadFixture("valid/extended-declaration.json");
+
+  const withinBudget = structuredClone(declaration);
+  withinBudget.changes[0].after = buildSharedCanonicalDag(10);
+  assert.deepEqual(validateProtocolSchema(withinBudget), {
+    ok: true,
+    diagnostics: [],
+  });
+
+  const overBudget = structuredClone(declaration);
+  overBudget.changes[0].after = buildSharedCanonicalDag(11);
+  const protocolResult = validateProtocolSchema(overBudget);
+  assertJsonBoundaryFailure(
+    protocolResult,
+    "SEIP_PROTOCOL_SCHEMA_INVALID",
+  );
+  assert.deepEqual(protocolResult, validateProtocolSchema(overBudget));
+
+  const amendmentResult = validateAmendmentSchema({
+    intent: {
+      summary: "Clarify the migration",
+      shared_extension: buildSharedCanonicalDag(11),
+    },
+  });
+  assertJsonBoundaryFailure(
+    amendmentResult,
+    "SEIP_LIFECYCLE_AMENDMENT_INVALID",
+  );
+  assert.deepEqual(
+    amendmentResult,
+    validateAmendmentSchema({
+      intent: {
+        summary: "Clarify the migration",
+        shared_extension: buildSharedCanonicalDag(11),
+      },
+    }),
+  );
+});
+
+test("accepts exactly 4096 shared visits and rejects 4097", () => {
+  // The disjoint diamond branches contribute 4096 expansion visits in total.
+  const atLimit = preflightJsonData(
+    buildSharedCanonicalDiamonds([10, 8, 6, 5, 4, 1]),
+  );
+  assert.equal(atLimit.ok, true);
+
+  // The final, separately-built depth-one branch contributes one more visit.
+  assert.deepEqual(
+    preflightJsonData(
+      buildSharedCanonicalDiamonds([10, 8, 6, 5, 4, 1, 1]),
+    ),
+    {
+      ok: false,
+      issue: { message: "must be JSON data" },
+    },
+  );
+});
+
 test("rejects a team repeated across amendment add and update", () => {
   const result = validateAmendmentSchema({
     consumers: {
@@ -265,28 +352,57 @@ test("rejects normalized cloud signatures and bracketed credential keys", async 
     "X-Goog-Credential",
     "X-Goog-Signature",
     "X-Amz-Security-Token",
-    "token%5B%5D",
-    "%EF%BD%94%EF%BD%8F%EF%BD%8B%EF%BD%85%EF%BD%8E",
+    "token[]",
+    "token[0]",
+    "sig[0]",
+    "X-Goog-Credential[0]",
+    "credentials[token]",
+    "foo[token][0]",
+    "foo[ｔｏｋｅｎ]",
+    "ｔｏｋｅｎ",
   ];
 
   for (const key of credentialKeys) {
     const candidate = structuredClone(declaration);
-    candidate.evidence[0].artifact.uri =
-      `https://example.com/report?${key}=secret`;
+    const artifactUri = new URL("https://example.com/report");
+    artifactUri.searchParams.set(key, "secret");
+    candidate.evidence[0].artifact.uri = artifactUri.href;
     const result = validateProtocolSchema(candidate);
-    assertInvalid(result, "SEIP_PROTOCOL_SCHEMA_INVALID");
-    assert.ok(
-      result.diagnostics.some(
-        (diagnostic) => diagnostic.path === "/evidence/0/artifact/uri",
-      ),
-      key,
+    assertCredentialQueryRejected(result, key);
+  }
+
+  for (const query of [
+    "token%5B0%5D=secret",
+    "sig%5B0%5D=secret",
+    "X-Goog-Credential%5B0%5D=secret",
+    "credentials%5Btoken%5D=secret",
+    "foo%5Btoken%5D%5B0%5D=secret",
+  ]) {
+    const candidate = structuredClone(declaration);
+    candidate.evidence[0].artifact.uri =
+      `https://example.com/report?${query}`;
+    assertCredentialQueryRejected(
+      validateProtocolSchema(candidate),
+      query,
     );
+  }
+
+  for (const key of ["filter[name]", "page[0]"]) {
+    const candidate = structuredClone(declaration);
+    const artifactUri = new URL("https://example.com/report");
+    artifactUri.searchParams.set(key, "benign");
+    candidate.evidence[0].artifact.uri = artifactUri.href;
+    assert.equal(validateProtocolSchema(candidate).ok, true, key);
   }
 
   for (const query of [
     "page_token=next-page",
     "designature=blue",
     "signal=strength",
+    "filter%5Bname%5D=active",
+    "page%5B0%5D=next",
+    "filter%5Bname%5D=active#token=fragment-only",
+    "safe=value#sig=fragment-only",
   ]) {
     const candidate = structuredClone(declaration);
     candidate.evidence[0].artifact.uri =

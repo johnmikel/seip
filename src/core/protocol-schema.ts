@@ -160,8 +160,8 @@ function normalizeArtifactQueryName(name: string): string {
   return name.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-function isCredentialArtifactQueryName(name: string): boolean {
-  const normalized = normalizeArtifactQueryName(name);
+function isCredentialArtifactQuerySegment(segment: string): boolean {
+  const normalized = normalizeArtifactQueryName(segment);
   if (credentialArtifactQueryNames.has(normalized)) return true;
 
   return (
@@ -171,6 +171,36 @@ function isCredentialArtifactQueryName(name: string): boolean {
     credentialArtifactQuerySuffixes.some((suffix) =>
       normalized.endsWith(suffix),
     )
+  );
+}
+
+function artifactQueryNameSegments(name: string): string[] {
+  const bracketIndex = name.indexOf("[");
+  if (bracketIndex < 0) return [name];
+
+  const segments = [name.slice(0, bracketIndex)];
+  const bracketSegment = /\[([^\[\]]*)\]/g;
+  bracketSegment.lastIndex = bracketIndex;
+  for (
+    let match = bracketSegment.exec(name);
+    match !== null;
+    match = bracketSegment.exec(name)
+  ) {
+    const segment = match[1];
+    if (
+      segment !== undefined &&
+      segment.length > 0 &&
+      !/^\d+$/.test(segment)
+    ) {
+      segments.push(segment);
+    }
+  }
+  return segments;
+}
+
+function isCredentialArtifactQueryName(name: string): boolean {
+  return artifactQueryNameSegments(name).some(
+    isCredentialArtifactQuerySegment,
   );
 }
 
