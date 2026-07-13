@@ -1,3 +1,5 @@
+import { URL } from "node:url";
+
 import amendmentValidatorModule from "../generated/amendment-validator.cjs";
 import protocolValidatorModule from "../generated/protocol-validator.cjs";
 
@@ -31,6 +33,43 @@ type SemanticValidator = (
   value: unknown,
   code: DiagnosticCode,
 ) => SchemaDiagnostic[];
+
+const credentialArtifactQueryNames = new Set([
+  "accesskey",
+  "accesskeys",
+  "accesstoken",
+  "accesstokens",
+  "apikey",
+  "apikeys",
+  "authorization",
+  "awsaccesskeyid",
+  "clientsecret",
+  "clientsecrets",
+  "credential",
+  "credentials",
+  "idtoken",
+  "idtokens",
+  "oauthtoken",
+  "oauthtokens",
+  "password",
+  "passwords",
+  "passwd",
+  "refreshtoken",
+  "refreshtokens",
+  "secret",
+  "secrets",
+  "securitytoken",
+  "securitytokens",
+  "sessiontoken",
+  "sessiontokens",
+  "signature",
+  "signatures",
+  "token",
+  "tokens",
+  "xamzcredential",
+  "xamzsecuritytoken",
+  "xamzsignature",
+]);
 
 const protocolValidator =
   protocolValidatorModule as unknown as GeneratedValidator;
@@ -79,6 +118,10 @@ function isJsonRecord(value: unknown): value is JsonRecord {
 
 function escapeJsonPointerToken(token: string): string {
   return token.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+function normalizeArtifactQueryName(name: string): string {
+  return name.toLowerCase().replace(/[\s._-]+/g, "");
 }
 
 function appendDuplicateKeyDiagnostics(
@@ -166,6 +209,44 @@ function appendCanonicalObjectDiagnostics(
   }
 }
 
+function appendArtifactUriDiagnostics(
+  value: unknown,
+  code: DiagnosticCode,
+  diagnostics: SchemaDiagnostic[],
+): void {
+  if (!Array.isArray(value)) return;
+
+  value.forEach((evidence, index) => {
+    if (!isJsonRecord(evidence) || !Object.hasOwn(evidence, "artifact")) return;
+    const artifact = evidence.artifact;
+    if (!isJsonRecord(artifact) || !Object.hasOwn(artifact, "uri")) return;
+    const uri = artifact.uri;
+    if (typeof uri !== "string") return;
+
+    let parsed: URL;
+    try {
+      parsed = new URL(uri);
+    } catch {
+      return;
+    }
+
+    const hasUserInfo = parsed.username.length > 0 || parsed.password.length > 0;
+    const hasCredentialQuery = [...parsed.searchParams.keys()].some((name) =>
+      credentialArtifactQueryNames.has(normalizeArtifactQueryName(name)),
+    );
+    if (!hasUserInfo && !hasCredentialQuery) return;
+
+    diagnostics.push({
+      code,
+      severity: "error",
+      message: hasUserInfo
+        ? "must not include URI userinfo"
+        : "must not include credential-bearing query parameters",
+      path: `/evidence/${index}/artifact/uri`,
+    });
+  });
+}
+
 // JSON Schema's `uniqueItems` compares whole records. These wrapper checks add
 // uniqueness projected by protocol identity keys without making the published
 // schemas depend on a non-standard runtime keyword.
@@ -207,6 +288,10 @@ function validateProtocolSemantics(
         );
       }
     });
+  }
+
+  if (Object.hasOwn(value, "evidence")) {
+    appendArtifactUriDiagnostics(value.evidence, code, diagnostics);
   }
 
   return diagnostics;

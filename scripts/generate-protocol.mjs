@@ -18,6 +18,15 @@ const [declarationSchema, amendmentSchema] = await Promise.all(
   ),
 );
 
+const declarationTimestampPattern = declarationSchema.$defs?.Timestamp?.pattern;
+const amendmentTimestampPattern = amendmentSchema.$defs?.Timestamp?.pattern;
+if (
+  typeof declarationTimestampPattern !== "string" ||
+  declarationTimestampPattern !== amendmentTimestampPattern
+) {
+  throw new Error("declaration and amendment timestamp patterns must match");
+}
+
 function generateStandaloneValidator(schema) {
   const ajv = new Ajv2020({
     allErrors: true,

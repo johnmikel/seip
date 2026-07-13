@@ -439,7 +439,7 @@ test("rejects identity-only consumer updates", () => {
   );
 });
 
-test("publishes RFC 3339 timestamp patterns for annotation-only validators", async () => {
+test("publishes leap-year-aware RFC 3339 fallback patterns", async () => {
   const declarationSchema = JSON.parse(
     await readFile(new URL("../../seip.schema.json", import.meta.url), "utf8"),
   );
@@ -455,11 +455,20 @@ test("publishes RFC 3339 timestamp patterns for annotation-only validators", asy
   ];
 
   assert.deepEqual(patterns.map((pattern) => typeof pattern), ["string", "string"]);
+  assert.equal(patterns[0], patterns[1]);
   for (const pattern of patterns) {
     const expression = new RegExp(pattern);
-    assert.equal(expression.test("2026-07-13T09:00:00Z"), true);
-    assert.equal(expression.test("2024-02-29T09:00:00Z"), true);
+    for (const valid of [
+      "2026-07-13T09:00:00Z",
+      "2024-02-29T09:00:00Z",
+      "2000-02-29T09:00:00Z",
+    ]) {
+      assert.equal(expression.test(valid), true, valid);
+    }
     for (const invalid of [
+      "2023-02-29T09:00:00Z",
+      "2025-02-29T09:00:00Z",
+      "1900-02-29T09:00:00Z",
       "2026-02-31T09:00:00Z",
       "2026-04-31T09:00:00Z",
       "2026-13-01T09:00:00Z",
@@ -472,8 +481,6 @@ test("publishes RFC 3339 timestamp patterns for annotation-only validators", asy
     }
   }
 
-  // The portable fallback checks calendar shape; Ajv's format check supplies
-  // the year-aware leap-day rule.
   const declaration = await loadFixture("valid/minimal-declaration.json");
   declaration.created_at = "2023-02-29T09:00:00Z";
   assertInvalid(validateProtocolSchema(declaration), "SEIP_PROTOCOL_SCHEMA_INVALID");
@@ -485,14 +492,22 @@ test("publishes RFC 3339 timestamp patterns for annotation-only validators", asy
   );
 });
 
-test("rejects credential-bearing artifact query parameters case-insensitively", async () => {
+test("semantically rejects decoded credential artifact query names", async () => {
   const declaration = await loadFixture("valid/extended-declaration.json");
   const credentialKeys = [
     "client_secret",
+    "%63lient%5Fsecret",
     "Authorization",
     "X-Amz-Credential",
+    "X-Amz-Security-Token",
+    "AWSAccessKeyId",
     "token",
     "tokens",
+    "refresh_token",
+    "OAuth-Token",
+    "id.token",
+    "session%5Ftoken",
+    "security-token",
     "password",
     "passwords",
     "api_key",
@@ -509,13 +524,51 @@ test("rejects credential-bearing artifact query parameters case-insensitively", 
   for (const key of credentialKeys) {
     const candidate = structuredClone(declaration);
     candidate.evidence[0].artifact.uri = `https://example.com/report?${key}=secret`;
-    assertInvalid(validateProtocolSchema(candidate), "SEIP_PROTOCOL_SCHEMA_INVALID");
+    const result = validateProtocolSchema(candidate);
+    assertInvalid(result, "SEIP_PROTOCOL_SCHEMA_INVALID");
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.path === "/evidence/0/artifact/uri" &&
+          diagnostic.message ===
+            "must not include credential-bearing query parameters",
+      ),
+      key,
+    );
+    assert.deepEqual(result, validateProtocolSchema(candidate));
   }
 
   const benign = structuredClone(declaration);
   benign.evidence[0].artifact.uri =
-    "https://example.com/report?version=1&region=eu";
+    "https://example.com/report?version=1&region=eu#?token=section";
   assert.equal(validateProtocolSchema(benign).ok, true);
+
+  const fragmentOnly = structuredClone(declaration);
+  fragmentOnly.evidence[0].artifact.uri =
+    "https://example.com/report#?token=section";
+  assert.equal(validateProtocolSchema(fragmentOnly).ok, true);
+
+  const urnCredential = structuredClone(declaration);
+  urnCredential.evidence[0].artifact.uri =
+    "urn:example:evidence?security_token=secret";
+  const urnResult = validateProtocolSchema(urnCredential);
+  assertInvalid(urnResult, "SEIP_PROTOCOL_SCHEMA_INVALID");
+  assert.ok(
+    urnResult.diagnostics.some(
+      (diagnostic) => diagnostic.path === "/evidence/0/artifact/uri",
+    ),
+  );
+
+  const userinfo = structuredClone(declaration);
+  userinfo.evidence[0].artifact.uri =
+    "https://user:secret@example.com/report";
+  const userinfoResult = validateProtocolSchema(userinfo);
+  assertInvalid(userinfoResult, "SEIP_PROTOCOL_SCHEMA_INVALID");
+  assert.ok(
+    userinfoResult.diagnostics.some(
+      (diagnostic) => diagnostic.path === "/evidence/0/artifact/uri",
+    ),
+  );
 });
 
 test("generates exact detector kinds and forbids Consumer.status in TypeScript", async () => {
