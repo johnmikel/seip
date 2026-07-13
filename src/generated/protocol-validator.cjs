@@ -292,8 +292,9 @@ var func74 = require_ucs2length().default;
 var func27 = require_equal().default;
 var pattern4 = new RegExp("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$", "u");
 var pattern5 = new RegExp("^[A-Za-z0-9](?!.*\\.\\.)[A-Za-z0-9_.-]*$", "u");
+var pattern6 = new RegExp("^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])", "u");
 var formats0 = require_formats().fullFormats["date-time"];
-var pattern6 = new RegExp("^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])", "u");
+var pattern7 = new RegExp("^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])", "u");
 function validate21(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
   let vErrors = null;
   let errors = 0;
@@ -335,7 +336,7 @@ function validate21(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
-        if (!pattern6.test(data0)) {
+        if (!pattern7.test(data0)) {
           const err3 = { instancePath: instancePath + "/team", schemaPath: "#/$defs/TeamId/pattern", keyword: "pattern", params: { pattern: "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])" }, message: 'must match pattern "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err3];
@@ -378,11 +379,11 @@ function validate21(data, { instancePath = "", parentData, parentDataProperty, r
   return errors === 0;
 }
 validate21.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
-var schema40 = { "title": "Add Change", "allOf": [{ "$ref": "#/$defs/NormalizedChangeCore" }, { "type": "object", "required": ["kind", "after"], "properties": { "kind": { "enum": ["object_add", "add"] }, "after": { "$ref": "#/$defs/SnapshotValue" } } }] };
+var schema40 = { "title": "Add Change", "allOf": [{ "$ref": "#/$defs/NormalizedChangeCore" }, { "type": "object", "required": ["kind", "after"], "properties": { "kind": { "enum": ["object_add", "add"] }, "after": { "$ref": "#/$defs/SnapshotValue" }, "before": false } }] };
 var schema41 = { "title": "Normalized Change Core", "type": "object", "additionalProperties": true, "required": ["change_id", "fingerprint_version", "schema_kind", "target", "kind", "compatibility"], "properties": { "change_id": { "$ref": "#/$defs/ChangeId" }, "fingerprint_version": { "const": 1 }, "schema_kind": { "$ref": "#/$defs/NonEmptyString" }, "target": { "$ref": "#/$defs/Target" }, "kind": { "$ref": "#/$defs/ChangeKind" }, "compatibility": { "type": "string", "enum": ["compatible", "breaking", "unknown"] }, "before": { "$ref": "#/$defs/SnapshotValue" }, "after": { "$ref": "#/$defs/SnapshotValue" } } };
 var schema50 = { "title": "Change Kind", "oneOf": [{ "type": "string", "enum": ["object_add", "add", "object_remove", "remove", "rename", "retype", "make_required", "make_optional", "make_non_nullable", "make_nullable", "enum_narrow", "enum_widen", "format_change", "constraint_change", "deprecate", "unknown"] }, { "type": "string", "pattern": "^[^:]+:.+$" }] };
-var pattern7 = new RegExp("^chg_sha256_[0-9a-f]{64}$", "u");
-var pattern8 = new RegExp("^[^:]+:.+$", "u");
+var pattern8 = new RegExp("^chg_sha256_[0-9a-f]{64}$", "u");
+var pattern9 = new RegExp("^[^:]+:.+$", "u");
 function validate27(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
   let vErrors = null;
   let errors = 0;
@@ -722,7 +723,7 @@ function validate26(data, { instancePath = "", parentData, parentDataProperty, r
   return errors === 0;
 }
 validate26.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
-var pattern9 = new RegExp("^(?:0e0|-?[1-9](?:[0-9]*[1-9])?e-?(?:0|[1-9][0-9]*))$", "u");
+var pattern10 = new RegExp("^(?:0e0|-?[1-9](?:[0-9]*[1-9])?e-?(?:0|[1-9][0-9]*))$", "u");
 var wrapper0 = { validate: validate31 };
 function validate32(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
   let vErrors = null;
@@ -1234,7 +1235,7 @@ function validate31(data, { instancePath = "", parentData, parentDataProperty, r
         if (data.decimal !== void 0 && func0.call(data, "decimal")) {
           let data6 = data.decimal;
           if (typeof data6 === "string") {
-            if (!pattern9.test(data6)) {
+            if (!pattern10.test(data6)) {
               const err20 = { instancePath: instancePath + "/decimal", schemaPath: "#/$defs/CanonicalNumber/properties/decimal/pattern", keyword: "pattern", params: { pattern: "^(?:0e0|-?[1-9](?:[0-9]*[1-9])?e-?(?:0|[1-9][0-9]*))$" }, message: 'must match pattern "^(?:0e0|-?[1-9](?:[0-9]*[1-9])?e-?(?:0|[1-9][0-9]*))$"' };
               if (vErrors === null) {
                 vErrors = [err20];
@@ -1647,7 +1648,7 @@ function validate25(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.change_id !== void 0 && func0.call(data, "change_id")) {
       let data0 = data.change_id;
       if (typeof data0 === "string") {
-        if (!pattern7.test(data0)) {
+        if (!pattern8.test(data0)) {
           const err6 = { instancePath: instancePath + "/change_id", schemaPath: "#/$defs/ChangeId/pattern", keyword: "pattern", params: { pattern: "^chg_sha256_[0-9a-f]{64}$" }, message: 'must match pattern "^chg_sha256_[0-9a-f]{64}$"' };
           if (vErrors === null) {
             vErrors = [err6];
@@ -1736,7 +1737,7 @@ function validate25(data, { instancePath = "", parentData, parentDataProperty, r
       }
       const _errs15 = errors;
       if (typeof data4 === "string") {
-        if (!pattern8.test(data4)) {
+        if (!pattern9.test(data4)) {
           const err13 = { instancePath: instancePath + "/kind", schemaPath: "#/$defs/ChangeKind/oneOf/1/pattern", keyword: "pattern", params: { pattern: "^[^:]+:.+$" }, message: 'must match pattern "^[^:]+:.+$"' };
           if (vErrors === null) {
             vErrors = [err13];
@@ -1880,12 +1881,21 @@ function validate24(data, { instancePath = "", parentData, parentDataProperty, r
         errors = vErrors.length;
       }
     }
+    if (data.before !== void 0 && func0.call(data, "before")) {
+      const err3 = { instancePath: instancePath + "/before", schemaPath: "#/allOf/1/properties/before/false schema", keyword: "false schema", params: {}, message: "boolean schema is false" };
+      if (vErrors === null) {
+        vErrors = [err3];
+      } else {
+        vErrors.push(err3);
+      }
+      errors++;
+    }
   } else {
-    const err3 = { instancePath, schemaPath: "#/allOf/1/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    const err4 = { instancePath, schemaPath: "#/allOf/1/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     if (vErrors === null) {
-      vErrors = [err3];
+      vErrors = [err4];
     } else {
-      vErrors.push(err3);
+      vErrors.push(err4);
     }
     errors++;
   }
@@ -1893,7 +1903,7 @@ function validate24(data, { instancePath = "", parentData, parentDataProperty, r
   return errors === 0;
 }
 validate24.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
-var schema61 = { "title": "Remove Change", "allOf": [{ "$ref": "#/$defs/NormalizedChangeCore" }, { "type": "object", "required": ["kind", "before"], "properties": { "kind": { "enum": ["object_remove", "remove"] }, "before": { "$ref": "#/$defs/SnapshotValue" } } }] };
+var schema61 = { "title": "Remove Change", "allOf": [{ "$ref": "#/$defs/NormalizedChangeCore" }, { "type": "object", "required": ["kind", "before"], "properties": { "kind": { "enum": ["object_remove", "remove"] }, "before": { "$ref": "#/$defs/SnapshotValue" }, "after": false } }] };
 function validate46(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
   let vErrors = null;
   let errors = 0;
@@ -1945,12 +1955,21 @@ function validate46(data, { instancePath = "", parentData, parentDataProperty, r
         errors = vErrors.length;
       }
     }
+    if (data.after !== void 0 && func0.call(data, "after")) {
+      const err3 = { instancePath: instancePath + "/after", schemaPath: "#/allOf/1/properties/after/false schema", keyword: "false schema", params: {}, message: "boolean schema is false" };
+      if (vErrors === null) {
+        vErrors = [err3];
+      } else {
+        vErrors.push(err3);
+      }
+      errors++;
+    }
   } else {
-    const err3 = { instancePath, schemaPath: "#/allOf/1/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    const err4 = { instancePath, schemaPath: "#/allOf/1/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     if (vErrors === null) {
-      vErrors = [err3];
+      vErrors = [err4];
     } else {
-      vErrors.push(err3);
+      vErrors.push(err4);
     }
     errors++;
   }
@@ -2212,7 +2231,7 @@ function validate61(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.kind !== void 0 && func0.call(data, "kind")) {
       let data0 = data.kind;
       if (typeof data0 === "string") {
-        if (!pattern8.test(data0)) {
+        if (!pattern9.test(data0)) {
           const err1 = { instancePath: instancePath + "/kind", schemaPath: "#/allOf/1/properties/kind/pattern", keyword: "pattern", params: { pattern: "^[^:]+:.+$" }, message: 'must match pattern "^[^:]+:.+$"' };
           if (vErrors === null) {
             vErrors = [err1];
@@ -2493,8 +2512,8 @@ function validate68(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.review_deadline !== void 0 && func0.call(data, "review_deadline")) {
       let data0 = data.review_deadline;
       if (typeof data0 === "string") {
-        if (!formats0.validate(data0)) {
-          const err2 = { instancePath: instancePath + "/review_deadline", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+        if (!pattern6.test(data0)) {
+          const err2 = { instancePath: instancePath + "/review_deadline", schemaPath: "#/$defs/Timestamp/pattern", keyword: "pattern", params: { pattern: "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])" }, message: 'must match pattern "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err2];
           } else {
@@ -2502,12 +2521,21 @@ function validate68(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
+        if (!formats0.validate(data0)) {
+          const err3 = { instancePath: instancePath + "/review_deadline", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+          if (vErrors === null) {
+            vErrors = [err3];
+          } else {
+            vErrors.push(err3);
+          }
+          errors++;
+        }
       } else {
-        const err3 = { instancePath: instancePath + "/review_deadline", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        const err4 = { instancePath: instancePath + "/review_deadline", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
-          vErrors = [err3];
+          vErrors = [err4];
         } else {
-          vErrors.push(err3);
+          vErrors.push(err4);
         }
         errors++;
       }
@@ -2515,30 +2543,17 @@ function validate68(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.target_enforcement_at !== void 0 && func0.call(data, "target_enforcement_at")) {
       let data1 = data.target_enforcement_at;
       if (typeof data1 === "string") {
-        if (!formats0.validate(data1)) {
-          const err4 = { instancePath: instancePath + "/target_enforcement_at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+        if (!pattern6.test(data1)) {
+          const err5 = { instancePath: instancePath + "/target_enforcement_at", schemaPath: "#/$defs/Timestamp/pattern", keyword: "pattern", params: { pattern: "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])" }, message: 'must match pattern "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"' };
           if (vErrors === null) {
-            vErrors = [err4];
+            vErrors = [err5];
           } else {
-            vErrors.push(err4);
+            vErrors.push(err5);
           }
           errors++;
         }
-      } else {
-        const err5 = { instancePath: instancePath + "/target_enforcement_at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        if (vErrors === null) {
-          vErrors = [err5];
-        } else {
-          vErrors.push(err5);
-        }
-        errors++;
-      }
-    }
-    if (data.deprecation_at !== void 0 && func0.call(data, "deprecation_at")) {
-      let data2 = data.deprecation_at;
-      if (typeof data2 === "string") {
-        if (!formats0.validate(data2)) {
-          const err6 = { instancePath: instancePath + "/deprecation_at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+        if (!formats0.validate(data1)) {
+          const err6 = { instancePath: instancePath + "/target_enforcement_at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
           if (vErrors === null) {
             vErrors = [err6];
           } else {
@@ -2547,7 +2562,7 @@ function validate68(data, { instancePath = "", parentData, parentDataProperty, r
           errors++;
         }
       } else {
-        const err7 = { instancePath: instancePath + "/deprecation_at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        const err7 = { instancePath: instancePath + "/target_enforcement_at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
           vErrors = [err7];
         } else {
@@ -2556,11 +2571,11 @@ function validate68(data, { instancePath = "", parentData, parentDataProperty, r
         errors++;
       }
     }
-    if (data.removal_at !== void 0 && func0.call(data, "removal_at")) {
-      let data3 = data.removal_at;
-      if (typeof data3 === "string") {
-        if (!formats0.validate(data3)) {
-          const err8 = { instancePath: instancePath + "/removal_at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+    if (data.deprecation_at !== void 0 && func0.call(data, "deprecation_at")) {
+      let data2 = data.deprecation_at;
+      if (typeof data2 === "string") {
+        if (!pattern6.test(data2)) {
+          const err8 = { instancePath: instancePath + "/deprecation_at", schemaPath: "#/$defs/Timestamp/pattern", keyword: "pattern", params: { pattern: "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])" }, message: 'must match pattern "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err8];
           } else {
@@ -2568,22 +2583,62 @@ function validate68(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
+        if (!formats0.validate(data2)) {
+          const err9 = { instancePath: instancePath + "/deprecation_at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+          if (vErrors === null) {
+            vErrors = [err9];
+          } else {
+            vErrors.push(err9);
+          }
+          errors++;
+        }
       } else {
-        const err9 = { instancePath: instancePath + "/removal_at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        const err10 = { instancePath: instancePath + "/deprecation_at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
-          vErrors = [err9];
+          vErrors = [err10];
         } else {
-          vErrors.push(err9);
+          vErrors.push(err10);
+        }
+        errors++;
+      }
+    }
+    if (data.removal_at !== void 0 && func0.call(data, "removal_at")) {
+      let data3 = data.removal_at;
+      if (typeof data3 === "string") {
+        if (!pattern6.test(data3)) {
+          const err11 = { instancePath: instancePath + "/removal_at", schemaPath: "#/$defs/Timestamp/pattern", keyword: "pattern", params: { pattern: "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])" }, message: 'must match pattern "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"' };
+          if (vErrors === null) {
+            vErrors = [err11];
+          } else {
+            vErrors.push(err11);
+          }
+          errors++;
+        }
+        if (!formats0.validate(data3)) {
+          const err12 = { instancePath: instancePath + "/removal_at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+          if (vErrors === null) {
+            vErrors = [err12];
+          } else {
+            vErrors.push(err12);
+          }
+          errors++;
+        }
+      } else {
+        const err13 = { instancePath: instancePath + "/removal_at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        if (vErrors === null) {
+          vErrors = [err13];
+        } else {
+          vErrors.push(err13);
         }
         errors++;
       }
     }
   } else {
-    const err10 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    const err14 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     if (vErrors === null) {
-      vErrors = [err10];
+      vErrors = [err14];
     } else {
-      vErrors.push(err10);
+      vErrors.push(err14);
     }
     errors++;
   }
@@ -2659,7 +2714,7 @@ function validate65(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
-        if (!pattern6.test(data0)) {
+        if (!pattern7.test(data0)) {
           const err6 = { instancePath: instancePath + "/summary", schemaPath: "#/properties/summary/pattern", keyword: "pattern", params: { pattern: "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])" }, message: 'must match pattern "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err6];
@@ -2690,7 +2745,7 @@ function validate65(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
-        if (!pattern6.test(data1)) {
+        if (!pattern7.test(data1)) {
           const err9 = { instancePath: instancePath + "/rationale", schemaPath: "#/$defs/NonEmptyTrimmedString/pattern", keyword: "pattern", params: { pattern: "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])" }, message: 'must match pattern "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err9];
@@ -2818,7 +2873,7 @@ function validate71(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
-        if (!pattern6.test(data0)) {
+        if (!pattern7.test(data0)) {
           const err6 = { instancePath: instancePath + "/team", schemaPath: "#/$defs/TeamId/pattern", keyword: "pattern", params: { pattern: "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])" }, message: 'must match pattern "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err6];
@@ -2910,7 +2965,7 @@ function validate71(data, { instancePath = "", parentData, parentDataProperty, r
 }
 validate71.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
 var schema81 = { "title": "Consumer Response Decision", "type": "string", "enum": ["ACKNOWLEDGED", "OBJECTED", "EXTENSION_REQUESTED"] };
-var pattern14 = new RegExp("^rsp_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$", "u");
+var pattern19 = new RegExp("^rsp_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$", "u");
 function validate73(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
   let vErrors = null;
   let errors = 0;
@@ -2988,7 +3043,7 @@ function validate73(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.response_id !== void 0 && func0.call(data, "response_id")) {
       let data0 = data.response_id;
       if (typeof data0 === "string") {
-        if (!pattern14.test(data0)) {
+        if (!pattern19.test(data0)) {
           const err7 = { instancePath: instancePath + "/response_id", schemaPath: "#/$defs/ResponseId/pattern", keyword: "pattern", params: { pattern: "^rsp_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$" }, message: 'must match pattern "^rsp_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$"' };
           if (vErrors === null) {
             vErrors = [err7];
@@ -3051,7 +3106,7 @@ function validate73(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
-        if (!pattern6.test(data2)) {
+        if (!pattern7.test(data2)) {
           const err13 = { instancePath: instancePath + "/team", schemaPath: "#/$defs/TeamId/pattern", keyword: "pattern", params: { pattern: "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])" }, message: 'must match pattern "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err13];
@@ -3116,8 +3171,8 @@ function validate73(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.at !== void 0 && func0.call(data, "at")) {
       let data6 = data.at;
       if (typeof data6 === "string") {
-        if (!formats0.validate(data6)) {
-          const err19 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+        if (!pattern6.test(data6)) {
+          const err19 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/pattern", keyword: "pattern", params: { pattern: "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])" }, message: 'must match pattern "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err19];
           } else {
@@ -3125,22 +3180,31 @@ function validate73(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
+        if (!formats0.validate(data6)) {
+          const err20 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+          if (vErrors === null) {
+            vErrors = [err20];
+          } else {
+            vErrors.push(err20);
+          }
+          errors++;
+        }
       } else {
-        const err20 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        const err21 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
-          vErrors = [err20];
+          vErrors = [err21];
         } else {
-          vErrors.push(err20);
+          vErrors.push(err21);
         }
         errors++;
       }
     }
   } else {
-    const err21 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    const err22 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     if (vErrors === null) {
-      vErrors = [err21];
+      vErrors = [err22];
     } else {
-      vErrors.push(err21);
+      vErrors.push(err22);
     }
     errors++;
   }
@@ -3149,8 +3213,8 @@ function validate73(data, { instancePath = "", parentData, parentDataProperty, r
 }
 validate73.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
 var schema91 = { "title": "Evidence Result", "type": "string", "enum": ["PASSED", "FAILED"] };
-var pattern16 = new RegExp("^evd_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$", "u");
-var pattern20 = new RegExp("^[0-9a-f]{64}$", "u");
+var pattern22 = new RegExp("^evd_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$", "u");
+var pattern26 = new RegExp("^[0-9a-f]{64}$", "u");
 function validate76(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
   let vErrors = null;
   let errors = 0;
@@ -3165,7 +3229,7 @@ function validate76(data, { instancePath = "", parentData, parentDataProperty, r
     for (const key0 of Object.keys(data)) {
       let data0 = data[key0];
       if (typeof data0 === "string") {
-        if (!pattern20.test(data0)) {
+        if (!pattern26.test(data0)) {
           const err0 = { instancePath: instancePath + "/" + key0.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/$defs/Sha256Digest/pattern", keyword: "pattern", params: { pattern: "^[0-9a-f]{64}$" }, message: 'must match pattern "^[0-9a-f]{64}$"' };
           if (vErrors === null) {
             vErrors = [err0];
@@ -3197,8 +3261,8 @@ function validate76(data, { instancePath = "", parentData, parentDataProperty, r
   return errors === 0;
 }
 validate76.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
-var pattern21 = new RegExp("[?&](?:[Aa][Cc][Cc][Ee][Ss][Ss][_-]?[Tt][Oo][Kk][Ee][Nn]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Pp][Aa][Ss][Ss](?:[Ww][Oo][Rr][Dd]|[Ww][Dd])?|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])=", "u");
-var pattern22 = new RegExp("^(?:https://(?![^/?#]*@)[^\\s/?#@]+(?:[/?#][^\\s]*)?|urn:[A-Za-z0-9][A-Za-z0-9-]{0,31}:[^\\s]+)$", "u");
+var pattern28 = new RegExp("[?&](?:[Aa][Cc][Cc][Ee][Ss][Ss][_-]?[Tt][Oo][Kk][Ee][Nn]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Pp][Aa][Ss][Ss](?:[Ww][Oo][Rr][Dd]|[Ww][Dd])?|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])=", "u");
+var pattern29 = new RegExp("^(?:https://(?![^/?#]*@)[^\\s/?#@]+(?:[/?#][^\\s]*)?|urn:[A-Za-z0-9][A-Za-z0-9-]{0,31}:[^\\s]+)$", "u");
 var formats14 = require_formats().fullFormats.uri;
 function validate78(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
   let vErrors = null;
@@ -3234,7 +3298,7 @@ function validate78(data, { instancePath = "", parentData, parentDataProperty, r
       const _errs5 = errors;
       const _errs6 = errors;
       if (typeof data0 === "string") {
-        if (!pattern21.test(data0)) {
+        if (!pattern28.test(data0)) {
           const err2 = {};
           if (vErrors === null) {
             vErrors = [err2];
@@ -3264,7 +3328,7 @@ function validate78(data, { instancePath = "", parentData, parentDataProperty, r
         }
       }
       if (typeof data0 === "string") {
-        if (!pattern22.test(data0)) {
+        if (!pattern29.test(data0)) {
           const err4 = { instancePath: instancePath + "/uri", schemaPath: "#/$defs/ArtifactUri/pattern", keyword: "pattern", params: { pattern: "^(?:https://(?![^/?#]*@)[^\\s/?#@]+(?:[/?#][^\\s]*)?|urn:[A-Za-z0-9][A-Za-z0-9-]{0,31}:[^\\s]+)$" }, message: 'must match pattern "^(?:https://(?![^/?#]*@)[^\\s/?#@]+(?:[/?#][^\\s]*)?|urn:[A-Za-z0-9][A-Za-z0-9-]{0,31}:[^\\s]+)$"' };
           if (vErrors === null) {
             vErrors = [err4];
@@ -3295,7 +3359,7 @@ function validate78(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.sha256 !== void 0 && func0.call(data, "sha256")) {
       let data1 = data.sha256;
       if (typeof data1 === "string") {
-        if (!pattern20.test(data1)) {
+        if (!pattern26.test(data1)) {
           const err7 = { instancePath: instancePath + "/sha256", schemaPath: "#/$defs/Sha256Digest/pattern", keyword: "pattern", params: { pattern: "^[0-9a-f]{64}$" }, message: 'must match pattern "^[0-9a-f]{64}$"' };
           if (vErrors === null) {
             vErrors = [err7];
@@ -3422,7 +3486,7 @@ function validate75(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.evidence_id !== void 0 && func0.call(data, "evidence_id")) {
       let data0 = data.evidence_id;
       if (typeof data0 === "string") {
-        if (!pattern16.test(data0)) {
+        if (!pattern22.test(data0)) {
           const err9 = { instancePath: instancePath + "/evidence_id", schemaPath: "#/$defs/EvidenceId/pattern", keyword: "pattern", params: { pattern: "^evd_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$" }, message: 'must match pattern "^evd_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$"' };
           if (vErrors === null) {
             vErrors = [err9];
@@ -3485,7 +3549,7 @@ function validate75(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
-        if (!pattern6.test(data2)) {
+        if (!pattern7.test(data2)) {
           const err15 = { instancePath: instancePath + "/team", schemaPath: "#/$defs/TeamId/pattern", keyword: "pattern", params: { pattern: "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])" }, message: 'must match pattern "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err15];
@@ -3525,7 +3589,7 @@ function validate75(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
-        if (!pattern6.test(data3)) {
+        if (!pattern7.test(data3)) {
           const err19 = { instancePath: instancePath + "/validator_id", schemaPath: "#/$defs/ValidatorId/pattern", keyword: "pattern", params: { pattern: "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])" }, message: 'must match pattern "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err19];
@@ -3571,7 +3635,7 @@ function validate75(data, { instancePath = "", parentData, parentDataProperty, r
         for (let i0 = 0; i0 < len0; i0++) {
           let data6 = data5[i0];
           if (typeof data6 === "string") {
-            if (!pattern7.test(data6)) {
+            if (!pattern8.test(data6)) {
               const err23 = { instancePath: instancePath + "/change_ids/" + i0, schemaPath: "#/$defs/ChangeId/pattern", keyword: "pattern", params: { pattern: "^chg_sha256_[0-9a-f]{64}$" }, message: 'must match pattern "^chg_sha256_[0-9a-f]{64}$"' };
               if (vErrors === null) {
                 vErrors = [err23];
@@ -3648,8 +3712,8 @@ function validate75(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.at !== void 0 && func0.call(data, "at")) {
       let data9 = data.at;
       if (typeof data9 === "string") {
-        if (!formats0.validate(data9)) {
-          const err29 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+        if (!pattern6.test(data9)) {
+          const err29 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/pattern", keyword: "pattern", params: { pattern: "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])" }, message: 'must match pattern "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err29];
           } else {
@@ -3657,12 +3721,21 @@ function validate75(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
+        if (!formats0.validate(data9)) {
+          const err30 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+          if (vErrors === null) {
+            vErrors = [err30];
+          } else {
+            vErrors.push(err30);
+          }
+          errors++;
+        }
       } else {
-        const err30 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        const err31 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
-          vErrors = [err30];
+          vErrors = [err31];
         } else {
-          vErrors.push(err30);
+          vErrors.push(err31);
         }
         errors++;
       }
@@ -3671,20 +3744,20 @@ function validate75(data, { instancePath = "", parentData, parentDataProperty, r
       let data10 = data.summary;
       if (typeof data10 === "string") {
         if (func74(data10) > 1024) {
-          const err31 = { instancePath: instancePath + "/summary", schemaPath: "#/properties/summary/maxLength", keyword: "maxLength", params: { limit: 1024 }, message: "must NOT have more than 1024 characters" };
+          const err32 = { instancePath: instancePath + "/summary", schemaPath: "#/properties/summary/maxLength", keyword: "maxLength", params: { limit: 1024 }, message: "must NOT have more than 1024 characters" };
           if (vErrors === null) {
-            vErrors = [err31];
+            vErrors = [err32];
           } else {
-            vErrors.push(err31);
+            vErrors.push(err32);
           }
           errors++;
         }
       } else {
-        const err32 = { instancePath: instancePath + "/summary", schemaPath: "#/properties/summary/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        const err33 = { instancePath: instancePath + "/summary", schemaPath: "#/properties/summary/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
-          vErrors = [err32];
+          vErrors = [err33];
         } else {
-          vErrors.push(err32);
+          vErrors.push(err33);
         }
         errors++;
       }
@@ -3696,11 +3769,11 @@ function validate75(data, { instancePath = "", parentData, parentDataProperty, r
       }
     }
   } else {
-    const err33 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    const err34 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     if (vErrors === null) {
-      vErrors = [err33];
+      vErrors = [err34];
     } else {
-      vErrors.push(err33);
+      vErrors.push(err34);
     }
     errors++;
   }
@@ -3709,7 +3782,7 @@ function validate75(data, { instancePath = "", parentData, parentDataProperty, r
 }
 validate75.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
 var schema100 = { "title": "Lifecycle Event Type", "type": "string", "enum": ["CREATED", "DECLARATION_UPDATED", "PROPOSED", "CONSUMER_RESPONDED", "EVIDENCE_RECORDED", "ACCEPTED", "ENFORCING", "COMPLETED", "WITHDRAWN", "REJECTED"] };
-var pattern24 = new RegExp("^evt_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$", "u");
+var pattern31 = new RegExp("^evt_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$", "u");
 function validate83(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
   let vErrors = null;
   let errors = 0;
@@ -3787,7 +3860,7 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.event_id !== void 0 && func0.call(data, "event_id")) {
       let data0 = data.event_id;
       if (typeof data0 === "string") {
-        if (!pattern24.test(data0)) {
+        if (!pattern31.test(data0)) {
           const err7 = { instancePath: instancePath + "/event_id", schemaPath: "#/$defs/EventId/pattern", keyword: "pattern", params: { pattern: "^evt_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$" }, message: 'must match pattern "^evt_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$"' };
           if (vErrors === null) {
             vErrors = [err7];
@@ -3853,8 +3926,8 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.at !== void 0 && func0.call(data, "at")) {
       let data3 = data.at;
       if (typeof data3 === "string") {
-        if (!formats0.validate(data3)) {
-          const err13 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+        if (!pattern6.test(data3)) {
+          const err13 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/pattern", keyword: "pattern", params: { pattern: "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])" }, message: 'must match pattern "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err13];
           } else {
@@ -3862,23 +3935,32 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
+        if (!formats0.validate(data3)) {
+          const err14 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+          if (vErrors === null) {
+            vErrors = [err14];
+          } else {
+            vErrors.push(err14);
+          }
+          errors++;
+        }
       } else {
-        const err14 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        const err15 = { instancePath: instancePath + "/at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
-          vErrors = [err14];
+          vErrors = [err15];
         } else {
-          vErrors.push(err14);
+          vErrors.push(err15);
         }
         errors++;
       }
     }
     if (data.actor !== void 0 && func0.call(data, "actor")) {
       if (typeof data.actor !== "string") {
-        const err15 = { instancePath: instancePath + "/actor", schemaPath: "#/properties/actor/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        const err16 = { instancePath: instancePath + "/actor", schemaPath: "#/properties/actor/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
-          vErrors = [err15];
+          vErrors = [err16];
         } else {
-          vErrors.push(err15);
+          vErrors.push(err16);
         }
         errors++;
       }
@@ -3889,16 +3971,7 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
       let valid5 = false;
       const _errs18 = errors;
       if (typeof data5 !== "string") {
-        const err16 = { instancePath: instancePath + "/from_status", schemaPath: "#/$defs/Status/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        if (vErrors === null) {
-          vErrors = [err16];
-        } else {
-          vErrors.push(err16);
-        }
-        errors++;
-      }
-      if (!(data5 === "DRAFT" || data5 === "PROPOSED" || data5 === "UNDER_REVIEW" || data5 === "ACCEPTED" || data5 === "ENFORCING" || data5 === "COMPLETED" || data5 === "WITHDRAWN" || data5 === "REJECTED")) {
-        const err17 = { instancePath: instancePath + "/from_status", schemaPath: "#/$defs/Status/enum", keyword: "enum", params: { allowedValues: schema36.enum }, message: "must be equal to one of the allowed values" };
+        const err17 = { instancePath: instancePath + "/from_status", schemaPath: "#/$defs/Status/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
           vErrors = [err17];
         } else {
@@ -3906,11 +3979,8 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
         }
         errors++;
       }
-      var _valid0 = _errs18 === errors;
-      valid5 = valid5 || _valid0;
-      const _errs21 = errors;
-      if (data5 !== null) {
-        const err18 = { instancePath: instancePath + "/from_status", schemaPath: "#/properties/from_status/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
+      if (!(data5 === "DRAFT" || data5 === "PROPOSED" || data5 === "UNDER_REVIEW" || data5 === "ACCEPTED" || data5 === "ENFORCING" || data5 === "COMPLETED" || data5 === "WITHDRAWN" || data5 === "REJECTED")) {
+        const err18 = { instancePath: instancePath + "/from_status", schemaPath: "#/$defs/Status/enum", keyword: "enum", params: { allowedValues: schema36.enum }, message: "must be equal to one of the allowed values" };
         if (vErrors === null) {
           vErrors = [err18];
         } else {
@@ -3918,14 +3988,26 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
         }
         errors++;
       }
-      var _valid0 = _errs21 === errors;
+      var _valid0 = _errs18 === errors;
       valid5 = valid5 || _valid0;
-      if (!valid5) {
-        const err19 = { instancePath: instancePath + "/from_status", schemaPath: "#/properties/from_status/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+      const _errs21 = errors;
+      if (data5 !== null) {
+        const err19 = { instancePath: instancePath + "/from_status", schemaPath: "#/properties/from_status/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
         if (vErrors === null) {
           vErrors = [err19];
         } else {
           vErrors.push(err19);
+        }
+        errors++;
+      }
+      var _valid0 = _errs21 === errors;
+      valid5 = valid5 || _valid0;
+      if (!valid5) {
+        const err20 = { instancePath: instancePath + "/from_status", schemaPath: "#/properties/from_status/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+        if (vErrors === null) {
+          vErrors = [err20];
+        } else {
+          vErrors.push(err20);
         }
         errors++;
       } else {
@@ -3945,16 +4027,7 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
       let valid7 = false;
       const _errs25 = errors;
       if (typeof data6 !== "string") {
-        const err20 = { instancePath: instancePath + "/to_status", schemaPath: "#/$defs/Status/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        if (vErrors === null) {
-          vErrors = [err20];
-        } else {
-          vErrors.push(err20);
-        }
-        errors++;
-      }
-      if (!(data6 === "DRAFT" || data6 === "PROPOSED" || data6 === "UNDER_REVIEW" || data6 === "ACCEPTED" || data6 === "ENFORCING" || data6 === "COMPLETED" || data6 === "WITHDRAWN" || data6 === "REJECTED")) {
-        const err21 = { instancePath: instancePath + "/to_status", schemaPath: "#/$defs/Status/enum", keyword: "enum", params: { allowedValues: schema36.enum }, message: "must be equal to one of the allowed values" };
+        const err21 = { instancePath: instancePath + "/to_status", schemaPath: "#/$defs/Status/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
           vErrors = [err21];
         } else {
@@ -3962,11 +4035,8 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
         }
         errors++;
       }
-      var _valid1 = _errs25 === errors;
-      valid7 = valid7 || _valid1;
-      const _errs28 = errors;
-      if (data6 !== null) {
-        const err22 = { instancePath: instancePath + "/to_status", schemaPath: "#/properties/to_status/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
+      if (!(data6 === "DRAFT" || data6 === "PROPOSED" || data6 === "UNDER_REVIEW" || data6 === "ACCEPTED" || data6 === "ENFORCING" || data6 === "COMPLETED" || data6 === "WITHDRAWN" || data6 === "REJECTED")) {
+        const err22 = { instancePath: instancePath + "/to_status", schemaPath: "#/$defs/Status/enum", keyword: "enum", params: { allowedValues: schema36.enum }, message: "must be equal to one of the allowed values" };
         if (vErrors === null) {
           vErrors = [err22];
         } else {
@@ -3974,14 +4044,26 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
         }
         errors++;
       }
-      var _valid1 = _errs28 === errors;
+      var _valid1 = _errs25 === errors;
       valid7 = valid7 || _valid1;
-      if (!valid7) {
-        const err23 = { instancePath: instancePath + "/to_status", schemaPath: "#/properties/to_status/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+      const _errs28 = errors;
+      if (data6 !== null) {
+        const err23 = { instancePath: instancePath + "/to_status", schemaPath: "#/properties/to_status/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
         if (vErrors === null) {
           vErrors = [err23];
         } else {
           vErrors.push(err23);
+        }
+        errors++;
+      }
+      var _valid1 = _errs28 === errors;
+      valid7 = valid7 || _valid1;
+      if (!valid7) {
+        const err24 = { instancePath: instancePath + "/to_status", schemaPath: "#/properties/to_status/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+        if (vErrors === null) {
+          vErrors = [err24];
+        } else {
+          vErrors.push(err24);
         }
         errors++;
       } else {
@@ -3998,21 +4080,21 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.details !== void 0 && func0.call(data, "details")) {
       let data7 = data.details;
       if (!(data7 && typeof data7 == "object" && !Array.isArray(data7))) {
-        const err24 = { instancePath: instancePath + "/details", schemaPath: "#/properties/details/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        const err25 = { instancePath: instancePath + "/details", schemaPath: "#/properties/details/type", keyword: "type", params: { type: "object" }, message: "must be object" };
         if (vErrors === null) {
-          vErrors = [err24];
+          vErrors = [err25];
         } else {
-          vErrors.push(err24);
+          vErrors.push(err25);
         }
         errors++;
       }
     }
   } else {
-    const err25 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    const err26 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     if (vErrors === null) {
-      vErrors = [err25];
+      vErrors = [err26];
     } else {
-      vErrors.push(err25);
+      vErrors.push(err26);
     }
     errors++;
   }
@@ -4190,7 +4272,7 @@ function validate88(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.before_digest !== void 0 && func0.call(data, "before_digest")) {
       let data3 = data.before_digest;
       if (typeof data3 === "string") {
-        if (!pattern20.test(data3)) {
+        if (!pattern26.test(data3)) {
           const err8 = { instancePath: instancePath + "/before_digest", schemaPath: "#/$defs/Sha256Digest/pattern", keyword: "pattern", params: { pattern: "^[0-9a-f]{64}$" }, message: 'must match pattern "^[0-9a-f]{64}$"' };
           if (vErrors === null) {
             vErrors = [err8];
@@ -4212,7 +4294,7 @@ function validate88(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.after_digest !== void 0 && func0.call(data, "after_digest")) {
       let data4 = data.after_digest;
       if (typeof data4 === "string") {
-        if (!pattern20.test(data4)) {
+        if (!pattern26.test(data4)) {
           const err10 = { instancePath: instancePath + "/after_digest", schemaPath: "#/$defs/Sha256Digest/pattern", keyword: "pattern", params: { pattern: "^[0-9a-f]{64}$" }, message: 'must match pattern "^[0-9a-f]{64}$"' };
           if (vErrors === null) {
             vErrors = [err10];
@@ -4348,7 +4430,7 @@ function validate93(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.response_id !== void 0 && func0.call(data, "response_id")) {
       let data0 = data.response_id;
       if (typeof data0 === "string") {
-        if (!pattern14.test(data0)) {
+        if (!pattern19.test(data0)) {
           const err3 = { instancePath: instancePath + "/response_id", schemaPath: "#/$defs/ResponseId/pattern", keyword: "pattern", params: { pattern: "^rsp_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$" }, message: 'must match pattern "^rsp_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$"' };
           if (vErrors === null) {
             vErrors = [err3];
@@ -4388,7 +4470,7 @@ function validate93(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
-        if (!pattern6.test(data1)) {
+        if (!pattern7.test(data1)) {
           const err7 = { instancePath: instancePath + "/team", schemaPath: "#/$defs/TeamId/pattern", keyword: "pattern", params: { pattern: "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])" }, message: 'must match pattern "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err7];
@@ -4545,7 +4627,7 @@ function validate98(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.evidence_id !== void 0 && func0.call(data, "evidence_id")) {
       let data0 = data.evidence_id;
       if (typeof data0 === "string") {
-        if (!pattern16.test(data0)) {
+        if (!pattern22.test(data0)) {
           const err3 = { instancePath: instancePath + "/evidence_id", schemaPath: "#/$defs/EvidenceId/pattern", keyword: "pattern", params: { pattern: "^evd_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$" }, message: 'must match pattern "^evd_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$"' };
           if (vErrors === null) {
             vErrors = [err3];
@@ -4585,7 +4667,7 @@ function validate98(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
-        if (!pattern6.test(data1)) {
+        if (!pattern7.test(data1)) {
           const err7 = { instancePath: instancePath + "/team", schemaPath: "#/$defs/TeamId/pattern", keyword: "pattern", params: { pattern: "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])" }, message: 'must match pattern "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err7];
@@ -5169,8 +5251,8 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.created_at !== void 0 && func0.call(data, "created_at")) {
       let data2 = data.created_at;
       if (typeof data2 === "string") {
-        if (!formats0.validate(data2)) {
-          const err17 = { instancePath: instancePath + "/created_at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+        if (!pattern6.test(data2)) {
+          const err17 = { instancePath: instancePath + "/created_at", schemaPath: "#/$defs/Timestamp/pattern", keyword: "pattern", params: { pattern: "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])" }, message: 'must match pattern "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"' };
           if (vErrors === null) {
             vErrors = [err17];
           } else {
@@ -5178,20 +5260,17 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
           }
           errors++;
         }
-      } else {
-        const err18 = { instancePath: instancePath + "/created_at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        if (vErrors === null) {
-          vErrors = [err18];
-        } else {
-          vErrors.push(err18);
+        if (!formats0.validate(data2)) {
+          const err18 = { instancePath: instancePath + "/created_at", schemaPath: "#/$defs/Timestamp/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+          if (vErrors === null) {
+            vErrors = [err18];
+          } else {
+            vErrors.push(err18);
+          }
+          errors++;
         }
-        errors++;
-      }
-    }
-    if (data.revision !== void 0 && func0.call(data, "revision")) {
-      let data3 = data.revision;
-      if (!(typeof data3 == "number" && (!(data3 % 1) && !isNaN(data3)) && isFinite(data3))) {
-        const err19 = { instancePath: instancePath + "/revision", schemaPath: "#/$defs/Revision/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+      } else {
+        const err19 = { instancePath: instancePath + "/created_at", schemaPath: "#/$defs/Timestamp/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
           vErrors = [err19];
         } else {
@@ -5199,13 +5278,25 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
         }
         errors++;
       }
+    }
+    if (data.revision !== void 0 && func0.call(data, "revision")) {
+      let data3 = data.revision;
+      if (!(typeof data3 == "number" && (!(data3 % 1) && !isNaN(data3)) && isFinite(data3))) {
+        const err20 = { instancePath: instancePath + "/revision", schemaPath: "#/$defs/Revision/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+        if (vErrors === null) {
+          vErrors = [err20];
+        } else {
+          vErrors.push(err20);
+        }
+        errors++;
+      }
       if (typeof data3 == "number" && isFinite(data3)) {
         if (data3 < 1 || isNaN(data3)) {
-          const err20 = { instancePath: instancePath + "/revision", schemaPath: "#/$defs/Revision/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
+          const err21 = { instancePath: instancePath + "/revision", schemaPath: "#/$defs/Revision/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
           if (vErrors === null) {
-            vErrors = [err20];
+            vErrors = [err21];
           } else {
-            vErrors.push(err20);
+            vErrors.push(err21);
           }
           errors++;
         }
@@ -5214,20 +5305,20 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
     if (data.status !== void 0 && func0.call(data, "status")) {
       let data4 = data.status;
       if (typeof data4 !== "string") {
-        const err21 = { instancePath: instancePath + "/status", schemaPath: "#/$defs/Status/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        if (vErrors === null) {
-          vErrors = [err21];
-        } else {
-          vErrors.push(err21);
-        }
-        errors++;
-      }
-      if (!(data4 === "DRAFT" || data4 === "PROPOSED" || data4 === "UNDER_REVIEW" || data4 === "ACCEPTED" || data4 === "ENFORCING" || data4 === "COMPLETED" || data4 === "WITHDRAWN" || data4 === "REJECTED")) {
-        const err22 = { instancePath: instancePath + "/status", schemaPath: "#/$defs/Status/enum", keyword: "enum", params: { allowedValues: schema36.enum }, message: "must be equal to one of the allowed values" };
+        const err22 = { instancePath: instancePath + "/status", schemaPath: "#/$defs/Status/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         if (vErrors === null) {
           vErrors = [err22];
         } else {
           vErrors.push(err22);
+        }
+        errors++;
+      }
+      if (!(data4 === "DRAFT" || data4 === "PROPOSED" || data4 === "UNDER_REVIEW" || data4 === "ACCEPTED" || data4 === "ENFORCING" || data4 === "COMPLETED" || data4 === "WITHDRAWN" || data4 === "REJECTED")) {
+        const err23 = { instancePath: instancePath + "/status", schemaPath: "#/$defs/Status/enum", keyword: "enum", params: { allowedValues: schema36.enum }, message: "must be equal to one of the allowed values" };
+        if (vErrors === null) {
+          vErrors = [err23];
+        } else {
+          vErrors.push(err23);
         }
         errors++;
       }
@@ -5242,11 +5333,11 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
       let data6 = data.changes;
       if (Array.isArray(data6)) {
         if (data6.length < 1) {
-          const err23 = { instancePath: instancePath + "/changes", schemaPath: "#/properties/changes/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+          const err24 = { instancePath: instancePath + "/changes", schemaPath: "#/properties/changes/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
           if (vErrors === null) {
-            vErrors = [err23];
+            vErrors = [err24];
           } else {
-            vErrors.push(err23);
+            vErrors.push(err24);
           }
           errors++;
         }
@@ -5263,11 +5354,11 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
           outer0: for (; i1--; ) {
             for (j0 = i1; j0--; ) {
               if (func27(data6[i1], data6[j0])) {
-                const err24 = { instancePath: instancePath + "/changes", schemaPath: "#/properties/changes/uniqueItems", keyword: "uniqueItems", params: { i: i1, j: j0 }, message: "must NOT have duplicate items (items ## " + j0 + " and " + i1 + " are identical)" };
+                const err25 = { instancePath: instancePath + "/changes", schemaPath: "#/properties/changes/uniqueItems", keyword: "uniqueItems", params: { i: i1, j: j0 }, message: "must NOT have duplicate items (items ## " + j0 + " and " + i1 + " are identical)" };
                 if (vErrors === null) {
-                  vErrors = [err24];
+                  vErrors = [err25];
                 } else {
-                  vErrors.push(err24);
+                  vErrors.push(err25);
                 }
                 errors++;
                 break outer0;
@@ -5276,11 +5367,11 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
           }
         }
       } else {
-        const err25 = { instancePath: instancePath + "/changes", schemaPath: "#/properties/changes/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        const err26 = { instancePath: instancePath + "/changes", schemaPath: "#/properties/changes/type", keyword: "type", params: { type: "array" }, message: "must be array" };
         if (vErrors === null) {
-          vErrors = [err25];
+          vErrors = [err26];
         } else {
-          vErrors.push(err25);
+          vErrors.push(err26);
         }
         errors++;
       }
@@ -5307,11 +5398,11 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
           outer1: for (; i3--; ) {
             for (j1 = i3; j1--; ) {
               if (func27(data9[i3], data9[j1])) {
-                const err26 = { instancePath: instancePath + "/consumers", schemaPath: "#/properties/consumers/uniqueItems", keyword: "uniqueItems", params: { i: i3, j: j1 }, message: "must NOT have duplicate items (items ## " + j1 + " and " + i3 + " are identical)" };
+                const err27 = { instancePath: instancePath + "/consumers", schemaPath: "#/properties/consumers/uniqueItems", keyword: "uniqueItems", params: { i: i3, j: j1 }, message: "must NOT have duplicate items (items ## " + j1 + " and " + i3 + " are identical)" };
                 if (vErrors === null) {
-                  vErrors = [err26];
+                  vErrors = [err27];
                 } else {
-                  vErrors.push(err26);
+                  vErrors.push(err27);
                 }
                 errors++;
                 break outer1;
@@ -5320,11 +5411,11 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
           }
         }
       } else {
-        const err27 = { instancePath: instancePath + "/consumers", schemaPath: "#/properties/consumers/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        const err28 = { instancePath: instancePath + "/consumers", schemaPath: "#/properties/consumers/type", keyword: "type", params: { type: "array" }, message: "must be array" };
         if (vErrors === null) {
-          vErrors = [err27];
+          vErrors = [err28];
         } else {
-          vErrors.push(err27);
+          vErrors.push(err28);
         }
         errors++;
       }
@@ -5340,11 +5431,11 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
           }
         }
       } else {
-        const err28 = { instancePath: instancePath + "/responses", schemaPath: "#/properties/responses/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        const err29 = { instancePath: instancePath + "/responses", schemaPath: "#/properties/responses/type", keyword: "type", params: { type: "array" }, message: "must be array" };
         if (vErrors === null) {
-          vErrors = [err28];
+          vErrors = [err29];
         } else {
-          vErrors.push(err28);
+          vErrors.push(err29);
         }
         errors++;
       }
@@ -5360,11 +5451,11 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
           }
         }
       } else {
-        const err29 = { instancePath: instancePath + "/evidence", schemaPath: "#/properties/evidence/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        const err30 = { instancePath: instancePath + "/evidence", schemaPath: "#/properties/evidence/type", keyword: "type", params: { type: "array" }, message: "must be array" };
         if (vErrors === null) {
-          vErrors = [err29];
+          vErrors = [err30];
         } else {
-          vErrors.push(err29);
+          vErrors.push(err30);
         }
         errors++;
       }
@@ -5380,21 +5471,21 @@ function validate20(data, { instancePath = "", parentData, parentDataProperty, r
           }
         }
       } else {
-        const err30 = { instancePath: instancePath + "/events", schemaPath: "#/properties/events/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        const err31 = { instancePath: instancePath + "/events", schemaPath: "#/properties/events/type", keyword: "type", params: { type: "array" }, message: "must be array" };
         if (vErrors === null) {
-          vErrors = [err30];
+          vErrors = [err31];
         } else {
-          vErrors.push(err30);
+          vErrors.push(err31);
         }
         errors++;
       }
     }
   } else {
-    const err31 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    const err32 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     if (vErrors === null) {
-      vErrors = [err31];
+      vErrors = [err32];
     } else {
-      vErrors.push(err31);
+      vErrors.push(err32);
     }
     errors++;
   }

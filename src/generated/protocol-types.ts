@@ -11,6 +11,7 @@ export type NormalizedChange = AddChange | RemoveChange | BeforeAndAfterChange |
 export type AddChange = NormalizedChangeCore & {
   kind: "object_add" | "add";
   after: SnapshotValue;
+  before?: never;
 };
 export type ChangeIdentifier = string;
 export type NonEmptyString = string;
@@ -41,6 +42,7 @@ export type CanonicalValue =
 export type RemoveChange = NormalizedChangeCore & {
   kind: "object_remove" | "remove";
   before: SnapshotValue;
+  after?: never;
 };
 export type BeforeAndAfterChange = NormalizedChangeCore & {
   kind:

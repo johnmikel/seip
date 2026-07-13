@@ -40,6 +40,30 @@
       "maxLength": 128,
       "pattern": "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"
     },
+    "NonEmptyTrimmedString": {
+      "title": "Non-empty Trimmed String",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"
+    },
+    "NonEmptyString": {
+      "title": "Non-empty String",
+      "type": "string",
+      "minLength": 1
+    },
+    "IntentSummary": {
+      "title": "Intent Summary",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"
+    },
+    "Timestamp": {
+      "title": "RFC 3339 Timestamp",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"
+    },
     "JsonValue": {
       "title": "JSON Value",
       "oneOf": [
@@ -72,6 +96,142 @@
     "IntentMergePatch": {
       "title": "Intent Merge Patch",
       "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IntentSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyTrimmedString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "migration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MigrationMergePatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimelineMergePatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      }
+    },
+    "MigrationMergePatch": {
+      "title": "Migration Merge Patch",
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "strategy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "steps": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rollback": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      }
+    },
+    "TimelineMergePatch": {
+      "title": "Timeline Merge Patch",
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "review_deadline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_enforcement_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deprecation_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "removal_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
       "additionalProperties": {
         "$ref": "#/$defs/JsonValue"
       }
@@ -129,7 +289,27 @@
         "dependencies": {
           "$ref": "#/$defs/DependencyList"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "contact"
+          ],
+          "properties": {
+            "contact": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "dependencies"
+          ],
+          "properties": {
+            "dependencies": {}
+          }
+        }
+      ]
     },
     "ConsumerOperations": {
       "title": "Consumer Amendment Operations",

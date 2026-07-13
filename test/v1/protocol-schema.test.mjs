@@ -141,6 +141,24 @@ test("enforces structural snapshot presence for standard change kinds", async ()
   assert.equal(validateProtocolSchema(detectorKind).ok, true);
 });
 
+test("forbids irrelevant snapshots for add and remove aliases", async () => {
+  const declaration = await loadFixture("valid/minimal-declaration.json");
+
+  for (const kind of ["add", "object_add"]) {
+    const candidate = structuredClone(declaration);
+    candidate.changes[0].kind = kind;
+    candidate.changes[0].before = { type: "null" };
+    assertInvalid(validateProtocolSchema(candidate), "SEIP_PROTOCOL_SCHEMA_INVALID");
+  }
+
+  for (const kind of ["remove", "object_remove"]) {
+    const candidate = structuredClone(declaration);
+    candidate.changes[0].kind = kind;
+    candidate.changes[0].before = { type: "string" };
+    assertInvalid(validateProtocolSchema(candidate), "SEIP_PROTOCOL_SCHEMA_INVALID");
+  }
+});
+
 test("accepts a valid lifecycle amendment including merge-patch nulls", async () => {
   const amendment = await loadFixture("valid/amendment.json");
 
@@ -148,6 +166,75 @@ test("accepts a valid lifecycle amendment including merge-patch nulls", async ()
     ok: true,
     diagnostics: [],
   });
+});
+
+test("validates typed non-empty intent merge patches", () => {
+  const validPatches = [
+    { intent: { summary: null } },
+    { intent: { rationale: null } },
+    { intent: { migration: null } },
+    { intent: { timeline: null } },
+    { intent: { migration: { strategy: null } } },
+    { intent: { timeline: { review_deadline: null } } },
+    { intent: { extension_flag: { nested: [1, true, null] } } },
+  ];
+  for (const patch of validPatches) {
+    assert.equal(validateAmendmentSchema(patch).ok, true);
+  }
+
+  const invalidPatches = [
+    { intent: {} },
+    { intent: { migration: {} } },
+    { intent: { timeline: {} } },
+    { intent: { summary: 42 } },
+    { intent: { summary: "" } },
+    { intent: { rationale: false } },
+    { intent: { migration: "replace everything" } },
+    { intent: { migration: { strategy: 42 } } },
+    { intent: { migration: { steps: "one step" } } },
+    { intent: { migration: { rollback: false } } },
+    { intent: { timeline: "next week" } },
+    { intent: { timeline: { review_deadline: 42 } } },
+  ];
+  for (const patch of invalidPatches) {
+    assertInvalid(
+      validateAmendmentSchema(patch),
+      "SEIP_LIFECYCLE_AMENDMENT_INVALID",
+    );
+  }
+});
+
+test("rejects identity-only consumer updates", () => {
+  assertInvalid(
+    validateAmendmentSchema({
+      consumers: {
+        update: [{ team: "analytics" }],
+      },
+    }),
+    "SEIP_LIFECYCLE_AMENDMENT_INVALID",
+  );
+});
+
+test("publishes RFC 3339 timestamp patterns for annotation-only validators", async () => {
+  const declarationSchema = JSON.parse(
+    await readFile(new URL("../../seip.schema.json", import.meta.url), "utf8"),
+  );
+  const amendmentSchema = JSON.parse(
+    await readFile(
+      new URL("../../seip.amendment.schema.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const patterns = [
+    declarationSchema.$defs.Timestamp?.pattern,
+    amendmentSchema.$defs.Timestamp?.pattern,
+  ];
+
+  assert.deepEqual(patterns.map((pattern) => typeof pattern), ["string", "string"]);
+  for (const pattern of patterns) {
+    assert.equal(new RegExp(pattern).test("2026-07-13T09:00:00Z"), true);
+    assert.equal(new RegExp(pattern).test("2026/07/13 09:00:00"), false);
+  }
 });
 
 test("rejects amendment reason and declaration-owned fields", async () => {
