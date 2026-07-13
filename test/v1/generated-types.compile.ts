@@ -3,12 +3,13 @@ import type {
   Consumer,
   DetectorSpecificChange,
   RemoveChange,
+  SeipDeclaration,
 } from "../../src/generated/protocol-types.js";
 
 const changeCore = {
   change_id:
     "chg_sha256_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  fingerprint_version: 1 as const,
+  fingerprint_version: "1" as const,
   schema_kind: "json-schema",
   target: {
     object: "Order",
@@ -55,9 +56,16 @@ const invalidConsumer: Consumer = {
   status: "ACTIVE",
 };
 
+type FingerprintVersion =
+  SeipDeclaration["changes"][number]["fingerprint_version"];
+const fingerprintVersion: FingerprintVersion = "1";
+const exactFingerprintVersion: "1" = fingerprintVersion;
+
 void validDetectorChange;
 void invalidDetectorChange;
 void invalidAddChange;
 void invalidRemoveChange;
 void extensibleConsumer;
 void invalidConsumer;
+void fingerprintVersion;
+void exactFingerprintVersion;

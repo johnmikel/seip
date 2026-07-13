@@ -9,7 +9,7 @@
   },
   "changes": [
     {
-      "fingerprint_version": 1,
+      "fingerprint_version": "1",
       "schema_kind": "json-schema",
       "target": {
         "object": "Order",

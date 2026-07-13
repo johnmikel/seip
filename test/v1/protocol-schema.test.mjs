@@ -274,7 +274,7 @@ test("wrappers enforce keyed uniqueness beyond standard uniqueItems", async () =
   }
 });
 
-test("semantic uniqueness checks respect ownProperties", async () => {
+test("JSON data boundary rejects inherited protocol data", async () => {
   const declaration = await loadFixture("valid/minimal-declaration.json");
   const change = declaration.changes[0];
   delete change.after;
@@ -288,7 +288,17 @@ test("semantic uniqueness checks respect ownProperties", async () => {
       ],
     },
   });
-  assert.equal(validateProtocolSchema(declaration).ok, true);
+  assert.deepEqual(validateProtocolSchema(declaration), {
+    ok: false,
+    diagnostics: [
+      {
+        code: "SEIP_PROTOCOL_SCHEMA_INVALID",
+        severity: "error",
+        message: "must be JSON data",
+        path: "/changes/0",
+      },
+    ],
+  });
 
   const amendment = Object.assign(
     Object.create({
@@ -301,7 +311,16 @@ test("semantic uniqueness checks respect ownProperties", async () => {
     }),
     { intent: { summary: "Clarified migration" } },
   );
-  assert.equal(validateAmendmentSchema(amendment).ok, true);
+  assert.deepEqual(validateAmendmentSchema(amendment), {
+    ok: false,
+    diagnostics: [
+      {
+        code: "SEIP_LIFECYCLE_AMENDMENT_INVALID",
+        severity: "error",
+        message: "must be JSON data",
+      },
+    ],
+  });
 });
 
 test("rejects duplicate migration steps in declarations and amendments", async () => {

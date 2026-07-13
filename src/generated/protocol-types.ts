@@ -150,7 +150,7 @@ export interface Producer {
 }
 export interface NormalizedChangeCore {
   change_id: ChangeIdentifier;
-  fingerprint_version: 1;
+  fingerprint_version: "1";
   schema_kind: NonEmptyString;
   target: ChangeTarget;
   kind: ChangeKind;
@@ -304,3 +304,5 @@ export interface ReasonEventDetails {
   reason: string;
   [k: string]: unknown;
 }
+
+export type SeipDeclaration = SEIPV1Declaration;

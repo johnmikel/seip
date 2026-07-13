@@ -22,7 +22,7 @@
   "keywords": ["seip", "schema", "evolution", "data-contracts", "migration", "breaking-changes"],
   "author": "John Mikel Regida",
   "license": "Apache-2.0",
-  "files": ["bin/", "src/", "examples/", "action.yml", "README.md", "SPEC.md", "seip.schema.json", "seip.amendment.schema.json"],
+  "files": ["bin/", "src/", "examples/", "action.yml", "README.md", "SPEC.md", "THIRD_PARTY_NOTICES.md", "seip.schema.json", "seip.amendment.schema.json"],
   "devDependencies": {
     "@types/node": "20.19.43",
     "ajv": "8.20.0",

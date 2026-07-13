@@ -237,52 +237,6 @@ var require_formats = __commonJS({
   }
 });
 
-// node_modules/fast-deep-equal/index.js
-var require_fast_deep_equal = __commonJS({
-  "node_modules/fast-deep-equal/index.js"(exports2, module2) {
-    "use strict";
-    module2.exports = function equal(a, b) {
-      if (a === b) return true;
-      if (a && b && typeof a == "object" && typeof b == "object") {
-        if (a.constructor !== b.constructor) return false;
-        var length, i, keys;
-        if (Array.isArray(a)) {
-          length = a.length;
-          if (length != b.length) return false;
-          for (i = length; i-- !== 0; )
-            if (!equal(a[i], b[i])) return false;
-          return true;
-        }
-        if (a.constructor === RegExp) return a.source === b.source && a.flags === b.flags;
-        if (a.valueOf !== Object.prototype.valueOf) return a.valueOf() === b.valueOf();
-        if (a.toString !== Object.prototype.toString) return a.toString() === b.toString();
-        keys = Object.keys(a);
-        length = keys.length;
-        if (length !== Object.keys(b).length) return false;
-        for (i = length; i-- !== 0; )
-          if (!Object.prototype.hasOwnProperty.call(b, keys[i])) return false;
-        for (i = length; i-- !== 0; ) {
-          var key = keys[i];
-          if (!equal(a[key], b[key])) return false;
-        }
-        return true;
-      }
-      return a !== a && b !== b;
-    };
-  }
-});
-
-// node_modules/ajv/dist/runtime/equal.js
-var require_equal = __commonJS({
-  "node_modules/ajv/dist/runtime/equal.js"(exports2) {
-    "use strict";
-    Object.defineProperty(exports2, "__esModule", { value: true });
-    var equal = require_fast_deep_equal();
-    equal.code = 'require("ajv/dist/runtime/equal").default';
-    exports2.default = equal;
-  }
-});
-
 // amendment-validator.raw.cjs
 module.exports = validate20;
 module.exports.default = validate20;
@@ -1260,7 +1214,6 @@ function validate21(data, { instancePath = "", parentData, parentDataProperty, r
   return errors === 0;
 }
 validate21.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
-var func27 = require_equal().default;
 function validate32(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
   let vErrors = null;
   let errors = 0;
@@ -1734,30 +1687,12 @@ function validate31(data, { instancePath = "", parentData, parentDataProperty, r
             errors = vErrors.length;
           }
         }
-        let i1 = data0.length;
-        let j0;
-        if (i1 > 1) {
-          outer0: for (; i1--; ) {
-            for (j0 = i1; j0--; ) {
-              if (func27(data0[i1], data0[j0])) {
-                const err7 = { instancePath: instancePath + "/add", schemaPath: "#/properties/add/uniqueItems", keyword: "uniqueItems", params: { i: i1, j: j0 }, message: "must NOT have duplicate items (items ## " + j0 + " and " + i1 + " are identical)" };
-                if (vErrors === null) {
-                  vErrors = [err7];
-                } else {
-                  vErrors.push(err7);
-                }
-                errors++;
-                break outer0;
-              }
-            }
-          }
-        }
       } else {
-        const err8 = { instancePath: instancePath + "/add", schemaPath: "#/properties/add/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        const err7 = { instancePath: instancePath + "/add", schemaPath: "#/properties/add/type", keyword: "type", params: { type: "array" }, message: "must be array" };
         if (vErrors === null) {
-          vErrors = [err8];
+          vErrors = [err7];
         } else {
-          vErrors.push(err8);
+          vErrors.push(err7);
         }
         errors++;
       }
@@ -1766,55 +1701,37 @@ function validate31(data, { instancePath = "", parentData, parentDataProperty, r
       let data2 = data.update;
       if (Array.isArray(data2)) {
         if (data2.length < 1) {
-          const err9 = { instancePath: instancePath + "/update", schemaPath: "#/properties/update/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+          const err8 = { instancePath: instancePath + "/update", schemaPath: "#/properties/update/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
           if (vErrors === null) {
-            vErrors = [err9];
+            vErrors = [err8];
           } else {
-            vErrors.push(err9);
+            vErrors.push(err8);
           }
           errors++;
         }
         const len1 = data2.length;
-        for (let i2 = 0; i2 < len1; i2++) {
-          if (!validate34(data2[i2], { instancePath: instancePath + "/update/" + i2, parentData: data2, parentDataProperty: i2, rootData, dynamicAnchors })) {
+        for (let i1 = 0; i1 < len1; i1++) {
+          if (!validate34(data2[i1], { instancePath: instancePath + "/update/" + i1, parentData: data2, parentDataProperty: i1, rootData, dynamicAnchors })) {
             vErrors = vErrors === null ? validate34.errors : vErrors.concat(validate34.errors);
             errors = vErrors.length;
           }
         }
-        let i3 = data2.length;
-        let j1;
-        if (i3 > 1) {
-          outer1: for (; i3--; ) {
-            for (j1 = i3; j1--; ) {
-              if (func27(data2[i3], data2[j1])) {
-                const err10 = { instancePath: instancePath + "/update", schemaPath: "#/properties/update/uniqueItems", keyword: "uniqueItems", params: { i: i3, j: j1 }, message: "must NOT have duplicate items (items ## " + j1 + " and " + i3 + " are identical)" };
-                if (vErrors === null) {
-                  vErrors = [err10];
-                } else {
-                  vErrors.push(err10);
-                }
-                errors++;
-                break outer1;
-              }
-            }
-          }
-        }
       } else {
-        const err11 = { instancePath: instancePath + "/update", schemaPath: "#/properties/update/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        const err9 = { instancePath: instancePath + "/update", schemaPath: "#/properties/update/type", keyword: "type", params: { type: "array" }, message: "must be array" };
         if (vErrors === null) {
-          vErrors = [err11];
+          vErrors = [err9];
         } else {
-          vErrors.push(err11);
+          vErrors.push(err9);
         }
         errors++;
       }
     }
   } else {
-    const err12 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    const err10 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     if (vErrors === null) {
-      vErrors = [err12];
+      vErrors = [err10];
     } else {
-      vErrors.push(err12);
+      vErrors.push(err10);
     }
     errors++;
   }

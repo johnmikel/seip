@@ -2,6 +2,7 @@ import { URL } from "node:url";
 
 import amendmentValidatorModule from "../generated/amendment-validator.cjs";
 import protocolValidatorModule from "../generated/protocol-validator.cjs";
+import { preflightJsonData } from "./json-data.js";
 
 export interface SchemaValidationResult {
   ok: boolean;
@@ -17,7 +18,9 @@ export interface SchemaValidationResult {
 
 interface ValidatorError {
   instancePath?: string;
+  keyword?: string;
   message?: string;
+  params?: Readonly<Record<string, unknown>>;
 }
 
 interface GeneratedValidator {
@@ -64,12 +67,45 @@ const credentialArtifactQueryNames = new Set([
   "sessiontokens",
   "signature",
   "signatures",
+  "sig",
   "token",
   "tokens",
+  "awscredential",
+  "awssecuritytoken",
+  "awssignature",
   "xamzcredential",
   "xamzsecuritytoken",
   "xamzsignature",
+  "xgoogcredential",
+  "xgoogsignature",
 ]);
+
+const credentialArtifactQueryPrefixes = [
+  "auth",
+  "aws",
+  "azure",
+  "client",
+  "gcp",
+  "google",
+  "oauth",
+  "openid",
+  "refresh",
+  "security",
+  "session",
+  "xamz",
+  "xgoog",
+] as const;
+
+const credentialArtifactQuerySuffixes = [
+  "accesskey",
+  "apikey",
+  "credential",
+  "password",
+  "secret",
+  "sig",
+  "signature",
+  "token",
+] as const;
 
 const protocolValidator =
   protocolValidatorModule as unknown as GeneratedValidator;
@@ -121,7 +157,35 @@ function escapeJsonPointerToken(token: string): string {
 }
 
 function normalizeArtifactQueryName(name: string): string {
-  return name.toLowerCase().replace(/[\s._-]+/g, "");
+  return name.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function isCredentialArtifactQueryName(name: string): boolean {
+  const normalized = normalizeArtifactQueryName(name);
+  if (credentialArtifactQueryNames.has(normalized)) return true;
+
+  return (
+    credentialArtifactQueryPrefixes.some((prefix) =>
+      normalized.startsWith(prefix),
+    ) &&
+    credentialArtifactQuerySuffixes.some((suffix) =>
+      normalized.endsWith(suffix),
+    )
+  );
+}
+
+function validatorErrorPath(error: ValidatorError): string | undefined {
+  const instancePath =
+    typeof error.instancePath === "string" ? error.instancePath : "";
+  const additionalProperty = error.params?.additionalProperty;
+  if (
+    error.keyword === "additionalProperties" &&
+    typeof additionalProperty === "string"
+  ) {
+    return `${instancePath}/${escapeJsonPointerToken(additionalProperty)}`;
+  }
+
+  return instancePath.length > 0 ? instancePath : undefined;
 }
 
 function appendDuplicateKeyDiagnostics(
@@ -231,8 +295,8 @@ function appendArtifactUriDiagnostics(
     }
 
     const hasUserInfo = parsed.username.length > 0 || parsed.password.length > 0;
-    const hasCredentialQuery = [...parsed.searchParams.keys()].some((name) =>
-      credentialArtifactQueryNames.has(normalizeArtifactQueryName(name)),
+    const hasCredentialQuery = [...parsed.searchParams.keys()].some(
+      isCredentialArtifactQueryName,
     );
     if (!hasUserInfo && !hasCredentialQuery) return;
 
@@ -316,6 +380,33 @@ function validateAmendmentSemantics(
       diagnostics,
     );
   }
+
+  const addedTeams = new Set<string>();
+  if (Array.isArray(consumers.add)) {
+    for (const consumer of consumers.add) {
+      if (!isJsonRecord(consumer) || typeof consumer.team !== "string") {
+        continue;
+      }
+      addedTeams.add(consumer.team);
+    }
+  }
+  if (Array.isArray(consumers.update)) {
+    consumers.update.forEach((consumer, index) => {
+      if (
+        !isJsonRecord(consumer) ||
+        typeof consumer.team !== "string" ||
+        !addedTeams.has(consumer.team)
+      ) {
+        return;
+      }
+      diagnostics.push({
+        code,
+        severity: "error",
+        message: "must not repeat a team across add and update",
+        path: `/consumers/update/${index}/team`,
+      });
+    });
+  }
   return diagnostics;
 }
 
@@ -326,9 +417,24 @@ function validateWith(
   validateSemantics?: SemanticValidator,
 ): SchemaValidationResult {
   try {
-    if (validator(value)) {
+    const preflight = preflightJsonData(value);
+    if (!preflight.ok) {
+      return {
+        ok: false,
+        diagnostics: [
+          {
+            code,
+            severity: "error",
+            ...preflight.issue,
+          },
+        ],
+      };
+    }
+    const sanitizedValue = preflight.value;
+
+    if (validator(sanitizedValue)) {
       const diagnostics = normalizeDiagnostics(
-        validateSemantics?.(value, code) ?? [],
+        validateSemantics?.(sanitizedValue, code) ?? [],
       );
       if (diagnostics.length > 0) {
         return {
@@ -353,10 +459,8 @@ function validateWith(
           severity: "error" as const,
           message: error.message ?? "must satisfy the schema",
         };
-        return typeof error.instancePath === "string" &&
-          error.instancePath.length > 0
-          ? { ...diagnostic, path: error.instancePath }
-          : diagnostic;
+        const path = validatorErrorPath(error);
+        return path === undefined ? diagnostic : { ...diagnostic, path };
       }),
     );
 

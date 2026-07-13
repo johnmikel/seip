@@ -507,7 +507,7 @@
           "$ref": "#/$defs/ChangeId"
         },
         "fingerprint_version": {
-          "const": 1
+          "const": "1"
         },
         "schema_kind": {
           "$ref": "#/$defs/NonEmptyString"

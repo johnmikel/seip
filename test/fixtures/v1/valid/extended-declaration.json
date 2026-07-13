@@ -13,7 +13,7 @@
   "changes": [
     {
       "change_id": "chg_sha256_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      "fingerprint_version": 1,
+      "fingerprint_version": "1",
       "schema_kind": "json-schema",
       "target": {
         "object": "Order",
