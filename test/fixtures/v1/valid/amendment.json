@@ -1,0 +1,32 @@
+{
+  "intent": {
+    "summary": "Clarify the dual-read migration",
+    "migration": {
+      "rollback": null
+    },
+    "extension_note": {
+      "source": "review"
+    }
+  },
+  "consumers": {
+    "add": [
+      {
+        "team": "risk",
+        "contact": "risk@example.com",
+        "dependencies": [
+          "orders-api"
+        ]
+      }
+    ],
+    "update": [
+      {
+        "team": "analytics",
+        "contact": "analytics-oncall@example.com",
+        "dependencies": [
+          "orders-api",
+          "orders-events"
+        ]
+      }
+    ]
+  }
+}

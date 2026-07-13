@@ -9,18 +9,20 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run generate && tsc -p tsconfig.json",
+    "generate": "node scripts/generate-protocol.mjs",
+    "check:generated": "npm run generate && git diff --exit-code -- src/generated",
     "demo": "node examples/full-workflow.mjs",
     "demo:enterprise": "node examples/enterprise-workflow.mjs",
     "demo:repos": "node examples/demo-repos/create-demo-repos.mjs",
     "pretest": "npm run build",
     "test": "node --test",
-    "test:v1": "npm run build && node --test test/v1"
+    "test:v1": "npm run build && node --test test/v1/*.test.mjs"
   },
   "keywords": ["seip", "schema", "evolution", "data-contracts", "migration", "breaking-changes"],
   "author": "John Mikel Regida",
   "license": "Apache-2.0",
-  "files": ["bin/", "src/", "examples/", "action.yml", "README.md", "SPEC.md", "seip.schema.json"],
+  "files": ["bin/", "src/", "examples/", "action.yml", "README.md", "SPEC.md", "seip.schema.json", "seip.amendment.schema.json"],
   "devDependencies": {
     "@types/node": "20.19.43",
     "ajv": "8.20.0",

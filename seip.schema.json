@@ -1,176 +1,1294 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SEIP Declaration",
+  "$id": "https://seip.dev/schema/v1/declaration.schema.json",
+  "title": "SEIP v1 Declaration",
   "type": "object",
   "additionalProperties": true,
   "required": [
-    "seip_version",
+    "protocol_version",
     "declaration_id",
     "created_at",
+    "revision",
     "status",
     "producer",
-    "change",
-    "timeline",
+    "changes",
+    "intent",
     "consumers",
     "responses",
+    "evidence",
     "events"
   ],
   "properties": {
-    "seip_version": { "type": "string" },
-    "declaration_id": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    "protocol_version": {
+      "$ref": "#/$defs/ProtocolVersion"
     },
-    "created_at": { "type": "string", "format": "date-time" },
+    "declaration_id": {
+      "$ref": "#/$defs/DeclarationId"
+    },
+    "created_at": {
+      "$ref": "#/$defs/Timestamp"
+    },
+    "revision": {
+      "$ref": "#/$defs/Revision"
+    },
     "status": {
-      "type": "string",
-      "enum": ["DRAFT", "PROPOSED", "UNDER_REVIEW", "ACCEPTED", "ENFORCING", "COMPLETED", "WITHDRAWN", "REJECTED"]
+      "$ref": "#/$defs/Status"
     },
     "producer": {
-      "type": "object",
-      "additionalProperties": true,
-      "required": ["team"],
-      "properties": {
-        "team": { "type": "string" },
-        "contact": { "type": "string" }
+      "$ref": "#/$defs/Producer"
+    },
+    "changes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/NormalizedChange"
       }
     },
-    "change": {
-      "type": "object",
-      "additionalProperties": true,
-      "required": ["type", "breaking", "summary", "affected_objects"],
-      "properties": {
-        "type": {
-          "type": "string",
-          "enum": ["add", "remove", "rename", "retype", "deprecate", "restructure"]
-        },
-        "breaking": { "type": "boolean" },
-        "summary": { "type": "string" },
-        "details": { "type": "string" },
-        "affected_objects": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": true,
-            "required": ["object", "property"],
-            "properties": {
-              "object": { "type": "string" },
-              "property": { "type": "string" },
-              "change_type": { "type": "string" },
-              "lossy": { "type": "boolean" },
-              "before_type": { "type": ["string", "null"] },
-              "after_type": { "type": ["string", "null"] }
-            }
-          }
-        },
-        "renames": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": true,
-            "required": ["object", "from", "to"],
-            "properties": {
-              "object": { "type": "string" },
-              "from": { "type": "string" },
-              "to": { "type": "string" }
-            }
-          }
-        },
-        "compatibility": {
-          "type": "object",
-          "additionalProperties": true,
-          "properties": {
-            "backward": { "type": "boolean" },
-            "forward": { "type": "boolean" },
-            "migration_available": { "type": "boolean" }
-          }
-        }
-      }
-    },
-    "migration": {
-      "type": "object",
-      "additionalProperties": true,
-      "properties": {
-        "strategy": { "type": "string" },
-        "steps": { "type": "array", "items": { "type": "string" } },
-        "sql": { "type": "array", "items": { "type": "string" } },
-        "rollback": { "type": "string" }
-      }
-    },
-    "timeline": {
-      "type": "object",
-      "additionalProperties": true,
-      "required": ["review_deadline", "deprecation_date", "removal_date"],
-      "properties": {
-        "review_deadline": { "type": "string", "format": "date-time" },
-        "migration_start": { "type": "string", "format": "date-time" },
-        "deprecation_date": { "type": "string", "format": "date-time" },
-        "removal_date": { "type": "string", "format": "date-time" }
-      }
+    "intent": {
+      "$ref": "#/$defs/Intent"
     },
     "consumers": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
-        "type": "object",
-        "additionalProperties": true,
-        "required": ["team", "status"],
-        "properties": {
-          "team": { "type": "string" },
-          "contact": { "type": "string" },
-          "dependencies": { "type": "array", "items": { "type": "string" } },
-          "status": {
-            "type": "string",
-            "enum": ["PENDING", "ACKNOWLEDGED", "OBJECTED", "EXTENSION_REQUESTED"]
-          }
-        }
+        "$ref": "#/$defs/Consumer"
       }
     },
     "responses": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": true,
-        "required": ["team", "status", "responded_at"],
-        "properties": {
-          "team": { "type": "string" },
-          "status": {
-            "type": "string",
-            "enum": ["ACKNOWLEDGED", "OBJECTED", "EXTENSION_REQUESTED"]
-          },
-          "message": { "type": "string" },
-          "responded_at": { "type": "string", "format": "date-time" },
-          "estimated_effort": { "type": "string" },
-          "requested_deadline": { "type": "string", "format": "date-time" }
-        }
+        "$ref": "#/$defs/Response"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Evidence"
       }
     },
     "events": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": true,
-        "required": ["type", "at"],
-        "properties": {
-          "type": { "type": "string" },
-          "at": { "type": "string", "format": "date-time" },
-          "actor": { "type": "string" },
-          "message": { "type": "string" },
-          "from_status": { "type": ["string", "null"] },
-          "to_status": { "type": ["string", "null"] },
-          "response_status": { "type": "string" }
-        }
+        "$ref": "#/$defs/Event"
       }
     }
   },
-  "allOf": [
-    {
-      "if": {
-        "properties": { "change": { "properties": { "breaking": { "const": true } } } }
-      },
-      "then": {
-        "required": ["migration"],
-        "properties": { "migration": { "required": ["strategy"] } }
+  "$defs": {
+    "ProtocolVersion": {
+      "title": "Protocol Version",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$"
+    },
+    "DeclarationId": {
+      "title": "Declaration Identifier",
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9](?!.*\\.\\.)[A-Za-z0-9_.-]*$"
+    },
+    "ChangeId": {
+      "title": "Change Identifier",
+      "type": "string",
+      "pattern": "^chg_sha256_[0-9a-f]{64}$"
+    },
+    "EventId": {
+      "title": "Event Identifier",
+      "type": "string",
+      "pattern": "^evt_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$"
+    },
+    "ResponseId": {
+      "title": "Response Identifier",
+      "type": "string",
+      "pattern": "^rsp_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$"
+    },
+    "EvidenceId": {
+      "title": "Evidence Identifier",
+      "type": "string",
+      "pattern": "^evd_(?!.*(?:\\.\\.|[/\\\\]))[A-Za-z0-9_.-]+$"
+    },
+    "TeamId": {
+      "title": "Team Identifier",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"
+    },
+    "ValidatorId": {
+      "title": "Validator Identifier",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"
+    },
+    "NonEmptyTrimmedString": {
+      "title": "Non-empty Trimmed String",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"
+    },
+    "NonEmptyString": {
+      "title": "Non-empty String",
+      "type": "string",
+      "minLength": 1
+    },
+    "Timestamp": {
+      "title": "RFC 3339 Timestamp",
+      "type": "string",
+      "format": "date-time"
+    },
+    "Sha256Digest": {
+      "title": "SHA-256 Digest",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "Revision": {
+      "title": "Declaration Revision",
+      "type": "integer",
+      "minimum": 1
+    },
+    "Status": {
+      "title": "Declaration Status",
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "PROPOSED",
+        "UNDER_REVIEW",
+        "ACCEPTED",
+        "ENFORCING",
+        "COMPLETED",
+        "WITHDRAWN",
+        "REJECTED"
+      ]
+    },
+    "Producer": {
+      "title": "Producer",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "team"
+      ],
+      "properties": {
+        "team": {
+          "$ref": "#/$defs/TeamId"
+        },
+        "contact": {
+          "type": "string"
+        }
       }
+    },
+    "PathProperty": {
+      "title": "Property Path Segment",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "name"
+      ],
+      "properties": {
+        "type": {
+          "const": "property"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "PathItems": {
+      "title": "Array Items Path Segment",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "items"
+        }
+      }
+    },
+    "PathTupleItem": {
+      "title": "Tuple Item Path Segment",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "index"
+      ],
+      "properties": {
+        "type": {
+          "const": "tuple_item"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "PathSegment": {
+      "title": "Tagged Path Segment",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/PathProperty"
+        },
+        {
+          "$ref": "#/$defs/PathItems"
+        },
+        {
+          "$ref": "#/$defs/PathTupleItem"
+        }
+      ]
+    },
+    "Target": {
+      "title": "Change Target",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "object",
+        "path"
+      ],
+      "properties": {
+        "object": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PathSegment"
+          }
+        }
+      }
+    },
+    "CanonicalNull": {
+      "title": "Canonical Null",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "null"
+        }
+      }
+    },
+    "CanonicalBoolean": {
+      "title": "Canonical Boolean",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "boolean"
+        },
+        "value": {
+          "type": "boolean"
+        }
+      }
+    },
+    "CanonicalString": {
+      "title": "Canonical String",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "CanonicalNumber": {
+      "title": "Canonical Number",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "decimal"
+      ],
+      "properties": {
+        "kind": {
+          "const": "number"
+        },
+        "decimal": {
+          "type": "string",
+          "pattern": "^(?:0e0|-?[1-9](?:[0-9]*[1-9])?e-?(?:0|[1-9][0-9]*))$"
+        }
+      }
+    },
+    "CanonicalArray": {
+      "title": "Canonical Array",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "items"
+      ],
+      "properties": {
+        "kind": {
+          "const": "array"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanonicalValue"
+          }
+        }
+      }
+    },
+    "CanonicalObjectEntry": {
+      "title": "Canonical Object Entry",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/CanonicalValue"
+        }
+      }
+    },
+    "CanonicalObject": {
+      "title": "Canonical Object",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "entries"
+      ],
+      "properties": {
+        "kind": {
+          "const": "object"
+        },
+        "entries": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/CanonicalObjectEntry"
+          }
+        }
+      }
+    },
+    "CanonicalValue": {
+      "title": "Canonical Value",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CanonicalNull"
+        },
+        {
+          "$ref": "#/$defs/CanonicalBoolean"
+        },
+        {
+          "$ref": "#/$defs/CanonicalString"
+        },
+        {
+          "$ref": "#/$defs/CanonicalNumber"
+        },
+        {
+          "$ref": "#/$defs/CanonicalArray"
+        },
+        {
+          "$ref": "#/$defs/CanonicalObject"
+        }
+      ]
+    },
+    "SnapshotRecord": {
+      "title": "Snapshot Record",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/SnapshotValue"
+      },
+      "not": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "null",
+              "boolean",
+              "string",
+              "number",
+              "array",
+              "object"
+            ]
+          }
+        }
+      }
+    },
+    "SnapshotValue": {
+      "title": "Snapshot Value",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/CanonicalValue"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SnapshotValue"
+          }
+        },
+        {
+          "$ref": "#/$defs/SnapshotRecord"
+        }
+      ]
+    },
+    "ChangeKind": {
+      "title": "Change Kind",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "object_add",
+            "add",
+            "object_remove",
+            "remove",
+            "rename",
+            "retype",
+            "make_required",
+            "make_optional",
+            "make_non_nullable",
+            "make_nullable",
+            "enum_narrow",
+            "enum_widen",
+            "format_change",
+            "constraint_change",
+            "deprecate",
+            "unknown"
+          ]
+        },
+        {
+          "type": "string",
+          "pattern": "^[^:]+:.+$"
+        }
+      ]
+    },
+    "NormalizedChangeCore": {
+      "title": "Normalized Change Core",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "change_id",
+        "fingerprint_version",
+        "schema_kind",
+        "target",
+        "kind",
+        "compatibility"
+      ],
+      "properties": {
+        "change_id": {
+          "$ref": "#/$defs/ChangeId"
+        },
+        "fingerprint_version": {
+          "const": 1
+        },
+        "schema_kind": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        },
+        "kind": {
+          "$ref": "#/$defs/ChangeKind"
+        },
+        "compatibility": {
+          "type": "string",
+          "enum": [
+            "compatible",
+            "breaking",
+            "unknown"
+          ]
+        },
+        "before": {
+          "$ref": "#/$defs/SnapshotValue"
+        },
+        "after": {
+          "$ref": "#/$defs/SnapshotValue"
+        }
+      }
+    },
+    "AddChange": {
+      "title": "Add Change",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NormalizedChangeCore"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "after"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "object_add",
+                "add"
+              ]
+            },
+            "after": {
+              "$ref": "#/$defs/SnapshotValue"
+            }
+          }
+        }
+      ]
+    },
+    "RemoveChange": {
+      "title": "Remove Change",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NormalizedChangeCore"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "before"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "object_remove",
+                "remove"
+              ]
+            },
+            "before": {
+              "$ref": "#/$defs/SnapshotValue"
+            }
+          }
+        }
+      ]
+    },
+    "BeforeAfterChange": {
+      "title": "Before and After Change",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NormalizedChangeCore"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "before",
+            "after"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "rename",
+                "retype",
+                "make_required",
+                "make_optional",
+                "make_non_nullable",
+                "make_nullable",
+                "enum_narrow",
+                "enum_widen",
+                "format_change",
+                "constraint_change",
+                "deprecate"
+              ]
+            },
+            "before": {
+              "$ref": "#/$defs/SnapshotValue"
+            },
+            "after": {
+              "$ref": "#/$defs/SnapshotValue"
+            }
+          }
+        }
+      ]
+    },
+    "UnknownChange": {
+      "title": "Unknown Change",
+      "anyOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/NormalizedChangeCore"
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "before"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "unknown"
+                },
+                "before": {
+                  "$ref": "#/$defs/SnapshotValue"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/NormalizedChangeCore"
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "after"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "unknown"
+                },
+                "after": {
+                  "$ref": "#/$defs/SnapshotValue"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "DetectorSpecificChange": {
+      "title": "Detector-specific Change",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NormalizedChangeCore"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "pattern": "^[^:]+:.+$"
+            }
+          }
+        }
+      ]
+    },
+    "NormalizedChange": {
+      "title": "Normalized Change",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/AddChange"
+        },
+        {
+          "$ref": "#/$defs/RemoveChange"
+        },
+        {
+          "$ref": "#/$defs/BeforeAfterChange"
+        },
+        {
+          "$ref": "#/$defs/UnknownChange"
+        },
+        {
+          "$ref": "#/$defs/DetectorSpecificChange"
+        }
+      ]
+    },
+    "Migration": {
+      "title": "Migration Intent",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "strategy"
+      ],
+      "properties": {
+        "strategy": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rollback": {
+          "type": "string"
+        }
+      }
+    },
+    "Timeline": {
+      "title": "Intent Timeline",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "review_deadline",
+        "target_enforcement_at"
+      ],
+      "properties": {
+        "review_deadline": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "target_enforcement_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "deprecation_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "removal_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "Intent": {
+      "title": "Declaration Intent",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "summary",
+        "rationale",
+        "migration",
+        "timeline"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^(?!\\s)[\\s\\S]*\\S(?![\\s\\S])"
+        },
+        "rationale": {
+          "$ref": "#/$defs/NonEmptyTrimmedString"
+        },
+        "migration": {
+          "$ref": "#/$defs/Migration"
+        },
+        "timeline": {
+          "$ref": "#/$defs/Timeline"
+        }
+      }
+    },
+    "DependencyList": {
+      "title": "Consumer Dependencies",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "Consumer": {
+      "title": "Consumer",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "team"
+      ],
+      "properties": {
+        "team": {
+          "$ref": "#/$defs/TeamId"
+        },
+        "contact": {
+          "type": "string"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/DependencyList"
+        }
+      },
+      "not": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {}
+        }
+      }
+    },
+    "ResponseDecision": {
+      "title": "Consumer Response Decision",
+      "type": "string",
+      "enum": [
+        "ACKNOWLEDGED",
+        "OBJECTED",
+        "EXTENSION_REQUESTED"
+      ]
+    },
+    "Response": {
+      "title": "Consumer Response",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "response_id",
+        "declaration_revision",
+        "team",
+        "decision",
+        "message",
+        "actor",
+        "at"
+      ],
+      "properties": {
+        "response_id": {
+          "$ref": "#/$defs/ResponseId"
+        },
+        "declaration_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "team": {
+          "$ref": "#/$defs/TeamId"
+        },
+        "decision": {
+          "$ref": "#/$defs/ResponseDecision"
+        },
+        "message": {
+          "type": "string"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "ArtifactUri": {
+      "title": "Evidence Artifact URI",
+      "type": "string",
+      "format": "uri",
+      "pattern": "^(?:https://(?![^/?#]*@)[^\\s/?#@]+(?:[/?#][^\\s]*)?|urn:[A-Za-z0-9][A-Za-z0-9-]{0,31}:[^\\s]+)$",
+      "not": {
+        "pattern": "[?&](?:[Aa][Cc][Cc][Ee][Ss][Ss][_-]?[Tt][Oo][Kk][Ee][Nn]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Pp][Aa][Ss][Ss](?:[Ww][Oo][Rr][Dd]|[Ww][Dd])?|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])="
+      }
+    },
+    "Artifact": {
+      "title": "Evidence Artifact",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "uri",
+        "sha256"
+      ],
+      "properties": {
+        "uri": {
+          "$ref": "#/$defs/ArtifactUri"
+        },
+        "sha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        }
+      }
+    },
+    "SourceDigests": {
+      "title": "Evidence Source Digests",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Sha256Digest"
+      }
+    },
+    "EvidenceResult": {
+      "title": "Evidence Result",
+      "type": "string",
+      "enum": [
+        "PASSED",
+        "FAILED"
+      ]
+    },
+    "Evidence": {
+      "title": "Validation Evidence",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "evidence_id",
+        "declaration_revision",
+        "team",
+        "validator_id",
+        "change_ids",
+        "source_digests",
+        "result",
+        "at",
+        "summary"
+      ],
+      "properties": {
+        "evidence_id": {
+          "$ref": "#/$defs/EvidenceId"
+        },
+        "declaration_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "team": {
+          "$ref": "#/$defs/TeamId"
+        },
+        "validator_id": {
+          "$ref": "#/$defs/ValidatorId"
+        },
+        "validator_version": {
+          "type": "string"
+        },
+        "change_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ChangeId"
+          }
+        },
+        "source_digests": {
+          "$ref": "#/$defs/SourceDigests"
+        },
+        "result": {
+          "$ref": "#/$defs/EvidenceResult"
+        },
+        "at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "artifact": {
+          "$ref": "#/$defs/Artifact"
+        }
+      }
+    },
+    "EventType": {
+      "title": "Lifecycle Event Type",
+      "type": "string",
+      "enum": [
+        "CREATED",
+        "DECLARATION_UPDATED",
+        "PROPOSED",
+        "CONSUMER_RESPONDED",
+        "EVIDENCE_RECORDED",
+        "ACCEPTED",
+        "ENFORCING",
+        "COMPLETED",
+        "WITHDRAWN",
+        "REJECTED"
+      ]
+    },
+    "EmptyEventDetails": {
+      "title": "Extensible Event Details",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {}
+    },
+    "DeclarationUpdatedDetails": {
+      "title": "Declaration Updated Event Details",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "reason",
+        "changed_paths",
+        "before_digest",
+        "after_digest"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "changed_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "before_digest": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "after_digest": {
+          "$ref": "#/$defs/Sha256Digest"
+        }
+      }
+    },
+    "ConsumerRespondedDetails": {
+      "title": "Consumer Responded Event Details",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "response_id",
+        "team",
+        "decision"
+      ],
+      "properties": {
+        "response_id": {
+          "$ref": "#/$defs/ResponseId"
+        },
+        "team": {
+          "$ref": "#/$defs/TeamId"
+        },
+        "decision": {
+          "$ref": "#/$defs/ResponseDecision"
+        }
+      }
+    },
+    "EvidenceRecordedDetails": {
+      "title": "Evidence Recorded Event Details",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "evidence_id",
+        "team",
+        "result"
+      ],
+      "properties": {
+        "evidence_id": {
+          "$ref": "#/$defs/EvidenceId"
+        },
+        "team": {
+          "$ref": "#/$defs/TeamId"
+        },
+        "result": {
+          "$ref": "#/$defs/EvidenceResult"
+        }
+      }
+    },
+    "ReasonEventDetails": {
+      "title": "Reason Event Details",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "EventCore": {
+      "title": "Lifecycle Event Core",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "event_id",
+        "type",
+        "declaration_revision",
+        "at",
+        "actor",
+        "from_status",
+        "to_status"
+      ],
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/EventId"
+        },
+        "type": {
+          "$ref": "#/$defs/EventType"
+        },
+        "declaration_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "from_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Status"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "to_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Status"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "details": {
+          "type": "object"
+        }
+      }
+    },
+    "CreatedEvent": {
+      "title": "Created Event",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventCore"
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "CREATED"
+            },
+            "details": {
+              "$ref": "#/$defs/EmptyEventDetails"
+            }
+          }
+        }
+      ]
+    },
+    "DeclarationUpdatedEvent": {
+      "title": "Declaration Updated Event",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventCore"
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "details"
+          ],
+          "properties": {
+            "type": {
+              "const": "DECLARATION_UPDATED"
+            },
+            "details": {
+              "$ref": "#/$defs/DeclarationUpdatedDetails"
+            }
+          }
+        }
+      ]
+    },
+    "ConsumerRespondedEvent": {
+      "title": "Consumer Responded Event",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventCore"
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "details"
+          ],
+          "properties": {
+            "type": {
+              "const": "CONSUMER_RESPONDED"
+            },
+            "details": {
+              "$ref": "#/$defs/ConsumerRespondedDetails"
+            }
+          }
+        }
+      ]
+    },
+    "EvidenceRecordedEvent": {
+      "title": "Evidence Recorded Event",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventCore"
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "details"
+          ],
+          "properties": {
+            "type": {
+              "const": "EVIDENCE_RECORDED"
+            },
+            "details": {
+              "$ref": "#/$defs/EvidenceRecordedDetails"
+            }
+          }
+        }
+      ]
+    },
+    "ReasonEvent": {
+      "title": "Withdrawn or Rejected Event",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventCore"
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "details"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "WITHDRAWN",
+                "REJECTED"
+              ]
+            },
+            "details": {
+              "$ref": "#/$defs/ReasonEventDetails"
+            }
+          }
+        }
+      ]
+    },
+    "StatusOnlyEvent": {
+      "title": "Status-only Event",
+      "allOf": [
+        {
+          "$ref": "#/$defs/EventCore"
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "PROPOSED",
+                "ACCEPTED",
+                "ENFORCING",
+                "COMPLETED"
+              ]
+            },
+            "details": {
+              "$ref": "#/$defs/EmptyEventDetails"
+            }
+          }
+        }
+      ]
+    },
+    "Event": {
+      "title": "Lifecycle Event",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CreatedEvent"
+        },
+        {
+          "$ref": "#/$defs/DeclarationUpdatedEvent"
+        },
+        {
+          "$ref": "#/$defs/ConsumerRespondedEvent"
+        },
+        {
+          "$ref": "#/$defs/EvidenceRecordedEvent"
+        },
+        {
+          "$ref": "#/$defs/ReasonEvent"
+        },
+        {
+          "$ref": "#/$defs/StatusOnlyEvent"
+        }
+      ]
     }
-  ]
+  }
 }
