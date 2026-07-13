@@ -190,7 +190,7 @@ test("normalizes strict JSON decimal lexemes without IEEE-754 conversion", () =>
   }
 });
 
-test("normalizes sign and exponent variants with BigInt exponent arithmetic", () => {
+test("normalizes sign and exponent variants with arbitrary-precision arithmetic", () => {
   const cases = [
     ["-12.3400E+0005", "-1234e3"],
     ["-100E-0002", "-1e0"],
@@ -206,6 +206,70 @@ test("normalizes sign and exponent variants with BigInt exponent arithmetic", ()
       diagnostics: [],
     });
   }
+});
+
+test("normalizes signed exponent adjustments through zero", () => {
+  const cases = [
+    ["1e+0000001", "1e1"],
+    ["1e-0000001", "1e-1"],
+    ["1e-0000000", "1e0"],
+    ["1.23e1", "123e-1"],
+    ["1.23e2", "123e0"],
+    ["1.23e3", "123e1"],
+    ["100e-3", "1e-1"],
+    ["100e-2", "1e0"],
+    ["100e-1", "1e1"],
+  ];
+
+  for (const [lexeme, expected] of cases) {
+    assert.deepEqual(normalizeDecimalLexeme(lexeme), {
+      ok: true,
+      value: expected,
+      diagnostics: [],
+    });
+  }
+});
+
+test("normalizes huge exponents with linear decimal-string arithmetic", () => {
+  const exponentWidth = 200_000;
+  const carryDigits = "9".repeat(exponentWidth);
+  const borrowDigits = `1${"0".repeat(exponentWidth)}`;
+  const bigIntDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "BigInt",
+  );
+  assert.ok(bigIntDescriptor);
+  let bigIntCalls = 0;
+  let carryResult;
+  let borrowResult;
+
+  Object.defineProperty(globalThis, "BigInt", {
+    ...bigIntDescriptor,
+    value() {
+      bigIntCalls += 1;
+      throw new Error("decimal normalization must not convert through BigInt");
+    },
+  });
+  try {
+    assert.doesNotThrow(() => {
+      carryResult = normalizeDecimalLexeme(`10e+000${carryDigits}`);
+      borrowResult = normalizeDecimalLexeme(`10e-${borrowDigits}`);
+    });
+  } finally {
+    Object.defineProperty(globalThis, "BigInt", bigIntDescriptor);
+  }
+
+  assert.equal(bigIntCalls, 0);
+  assert.deepEqual(carryResult, {
+    ok: true,
+    value: `1e1${"0".repeat(exponentWidth)}`,
+    diagnostics: [],
+  });
+  assert.deepEqual(borrowResult, {
+    ok: true,
+    value: `1e-${"9".repeat(exponentWidth)}`,
+    diagnostics: [],
+  });
 });
 
 test("rejects non-JSON and non-string decimal lexemes deterministically", () => {
@@ -274,8 +338,8 @@ test("uses JSON.stringify escaping and shortest finite number spellings", () => 
     'quote"slash\\',
     "\b\f\n\r\t\u0000",
     "\u2028\u2029",
-    "\ud800",
-    "\udfff",
+    "\ud800\udc00",
+    "\udbff\udfff",
   ];
   for (const value of strings) {
     assert.deepEqual(canonicalize(value), {
@@ -302,6 +366,29 @@ test("uses JSON.stringify escaping and shortest finite number spellings", () => 
     value: "true",
     diagnostics: [],
   });
+  const pairedSurrogates = { ["\ud800\udc00"]: "\udbff\udfff" };
+  assert.deepEqual(canonicalize(pairedSurrogates), {
+    ok: true,
+    value: JSON.stringify(pairedSurrogates),
+    diagnostics: [],
+  });
+});
+
+test("rejects unpaired UTF-16 surrogates in values and property names", () => {
+  const invalid = [
+    "\ud800",
+    "\udfff",
+    `prefix\ud800`,
+    `\udfffsuffix`,
+    { ["bad\ud800"]: "value" },
+    { safe: ["\udfff"] },
+  ];
+
+  for (const value of invalid) {
+    const first = canonicalize(value);
+    assertFailure(first, "SEIP_CANONICAL_JSON_INVALID");
+    assert.deepEqual(first, canonicalize(value));
+  }
 });
 
 test("rejects non-finite and unsafe integer numbers", () => {
@@ -665,17 +752,101 @@ test("requires tagged decimal values to already be canonical", () => {
   }
 });
 
-test("distinguishes absence from null canonically while changes require record snapshots", () => {
+test("distinguishes absence from null and accepts schema-valid root snapshots", () => {
   const absent = canonicalize({ kind: "detector:change" });
   const presentNull = canonicalize({ kind: "detector:change", before: null });
   assert.equal(absent.ok, true);
   assert.equal(presentNull.ok, true);
   assert.notDeepEqual(absent, presentNull);
 
-  assertFailure(
-    computeChangeId(changeWith({ before: null })),
-    "SEIP_PROTOCOL_CHANGE_INVALID",
+  assert.notEqual(
+    changeIdOf(snapshotShape("detector:change")),
+    changeIdOf(snapshotShape("detector:change", { before: null })),
   );
+
+  const roots = [
+    null,
+    false,
+    "root",
+    [null, true, "nested", { state: "record" }],
+    { kind: "null" },
+    { kind: "boolean", value: true },
+    { kind: "string", value: "root" },
+    { kind: "number", decimal: "12e-4" },
+    {
+      kind: "array",
+      items: [{ kind: "null" }, { kind: "string", value: "nested" }],
+    },
+    { state: "record" },
+  ];
+  for (const root of roots) {
+    const change = changeWith({ before: root });
+    const before = structuredClone(change);
+    assert.match(changeIdOf(change), /^chg_sha256_[0-9a-f]{64}$/);
+    assert.deepEqual(change, before);
+  }
+});
+
+test("normalizes and validates tagged CanonicalValue roots", () => {
+  const entries = [
+    { key: "z", value: { kind: "null" } },
+    { key: "a", value: { kind: "string", value: "first" } },
+  ];
+  assert.equal(
+    changeIdOf(changeWith({ before: { kind: "object", entries } })),
+    changeIdOf(
+      changeWith({
+        before: { kind: "object", entries: entries.toReversed() },
+      }),
+    ),
+  );
+
+  const invalidRoots = [
+    1,
+    [1],
+    { kind: "null", extra: true },
+    { kind: "number", decimal: "1.0" },
+    { kind: "array", items: [null] },
+    {
+      kind: "object",
+      entries: [
+        { key: "same", value: { kind: "null" } },
+        { key: "same", value: { kind: "boolean", value: true } },
+      ],
+    },
+  ];
+  for (const root of invalidRoots) {
+    let result;
+    assert.doesNotThrow(() => {
+      result = computeChangeId(changeWith({ before: root }));
+    });
+    assertFailure(result, "SEIP_PROTOCOL_CHANGE_INVALID");
+  }
+});
+
+test("fingerprinting rejects unpaired surrogates without throwing", () => {
+  const invalidChanges = [
+    changeWith({ schema_kind: "bad\ud800" }),
+    changeWith({
+      target: { ...structuredClone(BASE_CHANGE.target), object: "bad\udfff" },
+    }),
+    changeWith({
+      target: {
+        ...structuredClone(BASE_CHANGE.target),
+        path: [{ type: "property", name: "bad\ud800" }],
+      },
+    }),
+    changeWith({ before: "bad\udfff" }),
+    changeWith({ before: { ["bad\ud800"]: "value" } }),
+  ];
+
+  for (const change of invalidChanges) {
+    let result;
+    assert.doesNotThrow(() => {
+      result = computeChangeId(change);
+    });
+    assertFailure(result, "SEIP_PROTOCOL_CHANGE_INVALID");
+  }
 });
 
 test("enforces standard and detector-specific snapshot shapes", () => {
@@ -762,6 +933,23 @@ test("enforces standard and detector-specific snapshot shapes", () => {
   changeIdOf(
     snapshotShape("detector:custom", { after: { optional: "snapshot" } }),
   );
+});
+
+test("matches the schema namespaced-kind regex for line terminators", () => {
+  for (const terminator of ["\n", "\r", "\u2028", "\u2029"]) {
+    changeIdOf(snapshotShape(`vendor${terminator}:custom`));
+
+    for (const kind of [
+      `vendor:${terminator}`,
+      `vendor:custom${terminator}`,
+      `vendor:${terminator}custom`,
+    ]) {
+      assertFailure(
+        computeChangeId(snapshotShape(kind)),
+        "SEIP_PROTOCOL_CHANGE_INVALID",
+      );
+    }
+  }
 });
 
 test("validates every complete change field but ignores the incoming ID", () => {

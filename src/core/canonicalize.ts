@@ -14,6 +14,9 @@ interface TextFrame {
 
 type SerializationFrame = ValueFrame | TextFrame;
 
+const invalidCanonicalJsonMessage =
+  "Value must be finite, reflection-safe JSON data with safe integers and well-formed Unicode strings.";
+
 function escapeJsonPointerToken(token: string): string {
   return token.replace(/~/g, "~0").replace(/\//g, "~1");
 }
@@ -25,9 +28,29 @@ function appendPath(path: string | undefined, token: string): string {
 function invalidCanonicalJson(path?: string): Result<never> {
   return failure(
     "SEIP_CANONICAL_JSON_INVALID",
-    "Value must be finite, reflection-safe JSON data with safe integer numbers.",
+    invalidCanonicalJsonMessage,
     path === undefined ? {} : { path },
   );
+}
+
+function hasUnpairedSurrogate(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (
+        index + 1 >= value.length ||
+        nextCodeUnit < 0xdc00 ||
+        nextCodeUnit > 0xdfff
+      ) {
+        return true;
+      }
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function serialize(value: unknown): Result<string> {
@@ -52,6 +75,9 @@ function serialize(value: unknown): Result<string> {
       continue;
     }
     if (typeof current === "string") {
+      if (hasUnpairedSurrogate(current)) {
+        return invalidCanonicalJson(frame.path);
+      }
       output.push(JSON.stringify(current));
       continue;
     }
@@ -90,6 +116,9 @@ function serialize(value: unknown): Result<string> {
     for (let index = keys.length - 1; index >= 0; index -= 1) {
       const key = keys[index];
       if (key === undefined) continue;
+      if (hasUnpairedSurrogate(key)) {
+        return invalidCanonicalJson(appendPath(frame.path, key));
+      }
       if (index < keys.length - 1) {
         frames.push({ kind: "text", value: "," });
       }

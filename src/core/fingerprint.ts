@@ -26,8 +26,8 @@ export interface NormalizedChange {
   target: { object: string; path: PathSegment[] };
   kind: string;
   compatibility: "compatible" | "breaking" | "unknown";
-  before?: Record<string, NormalizedSnapshotValue>;
-  after?: Record<string, NormalizedSnapshotValue>;
+  before?: NormalizedSnapshotValue;
+  after?: NormalizedSnapshotValue;
   [extension: string]: unknown;
 }
 
@@ -39,8 +39,8 @@ interface ValidatedChange {
   objectName: string;
   path: PathSegment[];
   kind: string;
-  before?: JsonRecord;
-  after?: JsonRecord;
+  before?: NormalizedSnapshotValue;
+  after?: NormalizedSnapshotValue;
 }
 
 interface SortableChange {
@@ -92,6 +92,7 @@ const canonicalKinds = new Set([
   "object",
 ]);
 const changeIdPattern = /^chg_sha256_[0-9a-f]{64}$/;
+const namespacedKindPattern = /^[^:]+:.+$/;
 
 function invalidChange(): Result<never> {
   return failure(
@@ -131,8 +132,7 @@ function hasExactKeys(record: JsonRecord, keys: readonly string[]): boolean {
 }
 
 function isNamespacedKind(kind: string): boolean {
-  const separator = kind.indexOf(":");
-  return separator > 0 && separator < kind.length - 1;
+  return namespacedKindPattern.test(kind);
 }
 
 function createRecord(): JsonRecord {
@@ -172,12 +172,17 @@ function pushChildren(
   }
 }
 
-function normalizeSnapshotRecord(value: unknown): JsonRecord | undefined {
-  if (!isRecord(value)) return undefined;
-
-  const output = createRecord();
-  const pending: NormalizationFrame[] = [];
-  pushChildren(pending, value, output, "snapshot");
+function normalizeSnapshotValue(
+  value: unknown,
+): NormalizedSnapshotValue | undefined {
+  const holder = createRecord();
+  const pending: NormalizationFrame[] = [
+    {
+      mode: "snapshot",
+      value,
+      slot: { target: holder, key: "value" },
+    },
+  ];
   while (pending.length > 0) {
     const frame = pending.pop();
     if (frame === undefined) break;
@@ -321,7 +326,7 @@ function normalizeSnapshotRecord(value: unknown): JsonRecord | undefined {
     }
   }
 
-  return output;
+  return holder.value as NormalizedSnapshotValue;
 }
 
 function validatePath(value: unknown): PathSegment[] | undefined {
@@ -390,14 +395,14 @@ function validateChange(value: unknown): ValidatedChange | undefined {
 
   const hasBefore = hasOwn(value, "before");
   const hasAfter = hasOwn(value, "after");
-  let before: JsonRecord | undefined;
-  let after: JsonRecord | undefined;
+  let before: NormalizedSnapshotValue | undefined;
+  let after: NormalizedSnapshotValue | undefined;
   if (hasBefore) {
-    before = normalizeSnapshotRecord(value.before);
+    before = normalizeSnapshotValue(value.before);
     if (before === undefined) return undefined;
   }
   if (hasAfter) {
-    after = normalizeSnapshotRecord(value.after);
+    after = normalizeSnapshotValue(value.after);
     if (after === undefined) return undefined;
   }
 
