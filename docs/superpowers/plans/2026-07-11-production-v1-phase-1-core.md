@@ -89,7 +89,7 @@ Standard `kind` values and required snapshots are:
 | `make_non_nullable`, `make_nullable` | required | required | Both contain boolean `nullable`; values differ. |
 | `enum_narrow`, `enum_widen` | required | required | Both contain canonical `enum` arrays. |
 | `format_change` | required | required | Both contain `format`; values differ. |
-| `constraint_change` | required | required | Both identify the same constraint keyword. |
+| `constraint_change` | required | required | Both are normalized structural snapshots. Canonical constraint-keyword representation is deferred pending separate approval; Phase 1 must not invent a keyword field. |
 | `deprecate` | required | required | `after.deprecated` is true. |
 | `unknown` | at least one | at least one | Detector supplies all known snapshots. |
 
@@ -199,7 +199,7 @@ type EventDetails =
   | { type: "PROPOSED" | "ACCEPTED" | "ENFORCING" | "COMPLETED" };
 ```
 
-`CREATED` is the first and only created event, uses revision `1`, and transitions `null -> DRAFT`. Later events chain exactly: each `from_status` equals the preceding event's `to_status`. Non-status operations use identical from/to status. Event timestamps and revisions are non-decreasing. Only `DECLARATION_UPDATED` increments revision, exactly by one. Current declaration `revision` equals `1 + count(DECLARATION_UPDATED)`, and current `status` equals the final `to_status`. Each response and evidence entry has exactly one matching recorded event with the same ID, team, revision, and decision/result.
+`CREATED` is the first and only created event, uses revision `1`, and transitions `null -> DRAFT`. Later events chain exactly: each `from_status` equals the preceding event's `to_status`. Non-status operations use identical from/to status except `CONSUMER_RESPONDED`: from `PROPOSED`, `OBJECTED` or `EXTENSION_REQUESTED` transitions to `UNDER_REVIEW` while `ACKNOWLEDGED` preserves `PROPOSED`; from `UNDER_REVIEW`, every decision preserves `UNDER_REVIEW`. Event timestamps and revisions are non-decreasing. Only `DECLARATION_UPDATED` increments revision, exactly by one. Current declaration `revision` equals `1 + count(DECLARATION_UPDATED)`, and current `status` equals the final `to_status`. Each response and evidence entry has exactly one matching recorded event with the same ID, team, revision, and decision/result.
 
 ### Amendment patch
 
@@ -926,7 +926,7 @@ Expected: FAIL because `validateDeclaration` is not exported.
 5. enforce unique consumer teams;
 6. require responses/evidence to reference a declared team, current or historical valid revision, and declared changes;
 7. require chronological append order for responses, evidence, and events;
-8. replay the complete event stream: require exactly one `CREATED` event first with revision `1` and `null -> DRAFT`, require every later `from_status` to equal the preceding `to_status`, require non-status events to preserve status, reject events after a terminal state, and validate every event type against the allowed transition table;
+8. replay the complete event stream: require exactly one `CREATED` event first with revision `1` and `null -> DRAFT`, require every later `from_status` to equal the preceding `to_status`, require non-status events to preserve status except `CONSUMER_RESPONDED`—from `PROPOSED`, `OBJECTED` or `EXTENSION_REQUESTED` transitions to `UNDER_REVIEW` while `ACKNOWLEDGED` preserves `PROPOSED`; from `UNDER_REVIEW`, every decision preserves `UNDER_REVIEW`—reject events after a terminal state, and validate every event type against the allowed transition table;
 9. require event timestamps and revisions to be non-decreasing, require only `DECLARATION_UPDATED` to increment revision and then by exactly one, and require current revision to equal `1 + count(DECLARATION_UPDATED)`;
 10. require each response and evidence entry to have exactly one matching event with the same ID, team, declaration revision, and decision/result, with no orphan or duplicate recording event;
 11. require the latest lifecycle event `to_status` to equal current status;
@@ -939,6 +939,12 @@ Do not access the clock, crypto randomness, filesystem, or environment.
 Use explicit effect data:
 
 ```ts
+export interface CreateDeclarationInput {
+  // Required input-only effect data consumed by the CREATED event.
+  actor: string;
+  // Persisted declaration input fields and extensions are defined elsewhere.
+}
+
 export interface CreationContext {
   createdAt: string;
   createdEventId: string;
@@ -950,7 +956,7 @@ export function createDeclaration(
 ): Result<SeipDeclaration>;
 ```
 
-Construction sets revision `1`, status `DRAFT`, empty response/evidence arrays, a single `CREATED` event, and sorted changes. It preserves every schema-allowed unknown field supplied at any extensible input record, including but not limited to `x_*`, and validates the completed value before returning success.
+`CreateDeclarationInput.actor` is required input-only effect data: construction consumes it as the `CREATED` event actor and neither persists it at declaration root nor infers it from producer metadata. Construction sets revision `1`, status `DRAFT`, empty response/evidence arrays, a single `CREATED` event, and sorted changes. It preserves every schema-allowed unknown field supplied at any extensible input record, including but not limited to `x_*`, and validates the completed value before returning success.
 
 - [ ] **Step 5: Run focused and complete tests**
 

@@ -3,6 +3,7 @@ import type {
   LifecycleEvent,
   SeipDeclaration,
 } from "../generated/protocol-types.js";
+import { normalizeDecimalLexeme } from "./canonical-value.js";
 import { canonicalize } from "./canonicalize.js";
 import type { Diagnostic, Result } from "./diagnostics.js";
 import { computeChangeId } from "./fingerprint.js";
@@ -20,14 +21,6 @@ interface ParsedTimestamp {
 
 const RFC3339_PARTS =
   /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([Zz]|([+-])(\d{2}):(\d{2}))$/;
-const canonicalValueKinds = new Set([
-  "array",
-  "boolean",
-  "null",
-  "number",
-  "object",
-  "string",
-]);
 const terminalStatuses = new Set<DeclarationStatus>([
   "COMPLETED",
   "REJECTED",
@@ -215,6 +208,91 @@ function isNormalizedType(value: unknown): boolean {
   return true;
 }
 
+function hasExactKeys(value: JsonRecord, expected: readonly string[]): boolean {
+  const actual = Object.keys(value);
+  return (
+    actual.length === expected.length &&
+    expected.every((key) => Object.hasOwn(value, key))
+  );
+}
+
+function isCanonicalValue(value: unknown): boolean {
+  const pending: unknown[] = [value];
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!isRecord(current) || typeof current.kind !== "string") return false;
+
+    switch (current.kind) {
+      case "null":
+        if (!hasExactKeys(current, ["kind"])) return false;
+        break;
+      case "boolean":
+        if (
+          !hasExactKeys(current, ["kind", "value"]) ||
+          typeof current.value !== "boolean"
+        ) {
+          return false;
+        }
+        break;
+      case "string":
+        if (
+          !hasExactKeys(current, ["kind", "value"]) ||
+          typeof current.value !== "string"
+        ) {
+          return false;
+        }
+        break;
+      case "number": {
+        if (
+          !hasExactKeys(current, ["kind", "decimal"]) ||
+          typeof current.decimal !== "string"
+        ) {
+          return false;
+        }
+        const normalized = normalizeDecimalLexeme(current.decimal);
+        if (!normalized.ok || normalized.value !== current.decimal) return false;
+        break;
+      }
+      case "array":
+        if (
+          !hasExactKeys(current, ["kind", "items"]) ||
+          !Array.isArray(current.items)
+        ) {
+          return false;
+        }
+        for (const item of current.items) pending.push(item);
+        break;
+      case "object": {
+        if (
+          !hasExactKeys(current, ["kind", "entries"]) ||
+          !Array.isArray(current.entries)
+        ) {
+          return false;
+        }
+        let previousKey: string | undefined;
+        for (const entry of current.entries) {
+          if (
+            !isRecord(entry) ||
+            !hasExactKeys(entry, ["key", "value"]) ||
+            typeof entry.key !== "string" ||
+            (previousKey !== undefined && previousKey >= entry.key)
+          ) {
+            return false;
+          }
+          previousKey = entry.key;
+          pending.push(entry.value);
+        }
+        break;
+      }
+      default:
+        return false;
+    }
+  }
+
+  return true;
+}
+
 function appendCanonicalEnumDiagnostics(
   declaration: SeipDeclaration,
   changeIndex: number,
@@ -231,11 +309,7 @@ function appendCanonicalEnumDiagnostics(
   const encodings: string[] = [];
   for (let index = 0; index < snapshot.enum.length; index += 1) {
     const item = snapshot.enum[index];
-    if (
-      !isRecord(item) ||
-      typeof item.kind !== "string" ||
-      !canonicalValueKinds.has(item.kind)
-    ) {
+    if (!isCanonicalValue(item)) {
       appendChangeDiagnostic(
         declaration,
         changeIndex,
@@ -607,6 +681,7 @@ function appendEventDiagnostic(
   declaration: SeipDeclaration,
   diagnostics: Diagnostic[],
   code:
+    | "SEIP_LIFECYCLE_ACCEPTANCE_PRECONDITION"
     | "SEIP_LIFECYCLE_EVENT_INVALID"
     | "SEIP_LIFECYCLE_INVALID_TRANSITION"
     | "SEIP_LIFECYCLE_REVISION_INVALID"
@@ -628,6 +703,17 @@ function appendEventReplayDiagnostics(
   diagnostics: Diagnostic[],
 ): void {
   const { events } = declaration;
+  const consumerTeams = new Set(
+    declaration.consumers.map((consumer) => consumer.team),
+  );
+  const responsesById = new Map(
+    declaration.responses.map((response) => [response.response_id, response]),
+  );
+  const latestDecisions = new Map<
+    string,
+    SeipDeclaration["responses"][number]["decision"]
+  >();
+  let replayRevision = 1;
   if (events.length === 0) {
     appendEventDiagnostic(
       declaration,
@@ -640,7 +726,10 @@ function appendEventReplayDiagnostics(
 
   let updateCount = 0;
   events.forEach((current, index) => {
-    if (current.type === "DECLARATION_UPDATED") updateCount += 1;
+    if (current.type === "DECLARATION_UPDATED") {
+      updateCount += 1;
+      latestDecisions.clear();
+    }
 
     if (index === 0) {
       if (current.type !== "CREATED") {
@@ -719,6 +808,7 @@ function appendEventReplayDiagnostics(
     const expectedRevision =
       previous.declaration_revision +
       (current.type === "DECLARATION_UPDATED" ? 1 : 0);
+    const hasExpectedRevision = current.declaration_revision === expectedRevision;
     if (current.declaration_revision !== expectedRevision) {
       appendEventDiagnostic(
         declaration,
@@ -726,6 +816,36 @@ function appendEventReplayDiagnostics(
         "SEIP_LIFECYCLE_REVISION_INVALID",
         `/events/${index}/declaration_revision`,
         "Only DECLARATION_UPDATED may increment revision, exactly by one.",
+      );
+    }
+
+    if (current.type === "DECLARATION_UPDATED" && hasExpectedRevision) {
+      replayRevision = current.declaration_revision;
+    } else if (current.type === "CONSUMER_RESPONDED") {
+      const response = responsesById.get(current.details.response_id);
+      if (
+        response !== undefined &&
+        current.declaration_revision === replayRevision &&
+        response.declaration_revision === current.declaration_revision &&
+        response.team === current.details.team &&
+        response.decision === current.details.decision &&
+        consumerTeams.has(response.team)
+      ) {
+        latestDecisions.set(response.team, response.decision);
+      }
+    } else if (
+      current.type === "ACCEPTED" &&
+      declaration.consumers.some(
+        (consumer) =>
+          latestDecisions.get(consumer.team) !== "ACKNOWLEDGED",
+      )
+    ) {
+      appendEventDiagnostic(
+        declaration,
+        diagnostics,
+        "SEIP_LIFECYCLE_ACCEPTANCE_PRECONDITION",
+        `/events/${index}/type`,
+        "ACCEPTED requires every declared consumer's latest current-revision response to be ACKNOWLEDGED.",
       );
     }
 

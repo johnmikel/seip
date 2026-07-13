@@ -193,6 +193,90 @@ function completeDeclaration() {
   return declaration;
 }
 
+function acceptanceDeclaration({
+  consumerTeams = ["analytics"],
+  decisions = [],
+  updateAfterResponses = false,
+} = {}) {
+  const declaration = proposedDeclaration();
+  declaration.consumers = consumerTeams.map((team) => ({
+    team,
+    dependencies: [`${team}-api`],
+  }));
+
+  let currentRevision = 1;
+  let currentStatus = "PROPOSED";
+  let nextHour = 11;
+  const timestamp = () =>
+    `2026-07-13T${String(nextHour++).padStart(2, "0")}:00:00Z`;
+
+  decisions.forEach(({ team, decision }, index) => {
+    const response = validResponse({
+      response_id: `rsp_${team}_${index + 1}`,
+      declaration_revision: currentRevision,
+      team,
+      decision,
+      at: timestamp(),
+    });
+    declaration.responses.push(response);
+
+    const toStatus =
+      currentStatus === "PROPOSED" && decision !== "ACKNOWLEDGED"
+        ? "UNDER_REVIEW"
+        : currentStatus;
+    declaration.events.push(
+      event({
+        event_id: `evt_response_${team}_${index + 1}`,
+        type: "CONSUMER_RESPONDED",
+        declaration_revision: currentRevision,
+        at: response.at,
+        from_status: currentStatus,
+        to_status: toStatus,
+        details: {
+          response_id: response.response_id,
+          team,
+          decision,
+        },
+      }),
+    );
+    currentStatus = toStatus;
+  });
+
+  if (updateAfterResponses) {
+    currentRevision += 1;
+    declaration.events.push(
+      event({
+        event_id: "evt_updated_before_acceptance",
+        type: "DECLARATION_UPDATED",
+        declaration_revision: currentRevision,
+        at: timestamp(),
+        from_status: currentStatus,
+        to_status: currentStatus,
+        details: {
+          reason: "Clarify rollout.",
+          changed_paths: ["/intent/summary"],
+          before_digest: "a".repeat(64),
+          after_digest: "b".repeat(64),
+        },
+      }),
+    );
+  }
+
+  declaration.events.push(
+    event({
+      event_id: "evt_accepted_precondition",
+      type: "ACCEPTED",
+      declaration_revision: currentRevision,
+      at: timestamp(),
+      from_status: currentStatus,
+      to_status: "ACCEPTED",
+    }),
+  );
+  declaration.revision = currentRevision;
+  declaration.status = "ACCEPTED";
+  return declaration;
+}
+
 function createInput() {
   const source = structuredClone(minimalDeclaration);
   const orderChange = source.changes[0];
@@ -495,6 +579,117 @@ test("requires canonical enum arrays to be sorted and duplicate-free", () => {
   );
 });
 
+test("rejects enum CanonicalValue tags unless recursively canonical", async (t) => {
+  const invalidValues = [
+    [
+      "unsorted object entries",
+      {
+        kind: "object",
+        entries: [
+          { key: "z", value: { kind: "null" } },
+          { key: "a", value: { kind: "null" } },
+        ],
+      },
+    ],
+    [
+      "duplicate object entries",
+      {
+        kind: "object",
+        entries: [
+          { key: "same", value: { kind: "null" } },
+          { key: "same", value: { kind: "boolean", value: true } },
+        ],
+      },
+    ],
+    [
+      "nested unsorted object entries",
+      {
+        kind: "array",
+        items: [
+          {
+            kind: "object",
+            entries: [
+              { key: "z", value: { kind: "null" } },
+              { key: "a", value: { kind: "null" } },
+            ],
+          },
+        ],
+      },
+    ],
+    ["a noncanonical decimal", { kind: "number", decimal: "1.0" }],
+    [
+      "extra tag fields",
+      { kind: "string", value: "paid", extension: true },
+    ],
+    [
+      "a malformed nested tag",
+      {
+        kind: "array",
+        items: [{ kind: "boolean", value: "true" }],
+      },
+    ],
+  ];
+
+  for (const [name, value] of invalidValues) {
+    await t.test(name, () => {
+      const declaration = declarationWithChange({
+        kind: "enum_widen",
+        before: { enum: [{ kind: "string", value: "pending" }] },
+        after: { enum: [{ kind: "string", value: "paid" }] },
+      });
+      declaration.changes[0].before = { enum: [value] };
+      const changeId = computeChangeId(declaration.changes[0]);
+      if (changeId.ok) declaration.changes[0].change_id = changeId.value;
+
+      const result = validateDeclaration(declaration);
+
+      assert.equal(result.ok, false);
+      assert.ok(
+        result.diagnostics.some(
+          (diagnostic) =>
+            diagnostic.code === "SEIP_PROTOCOL_CHANGE_INVALID" ||
+            diagnostic.code === "SEIP_PROTOCOL_SCHEMA_INVALID",
+        ),
+      );
+    });
+  }
+
+  await t.test("accepts deeply nested tags with sorted object entries", () => {
+    const canonicalValue = {
+      kind: "object",
+      entries: [
+        {
+          key: "alpha",
+          value: {
+            kind: "array",
+            items: [
+              { kind: "null" },
+              { kind: "number", decimal: "125e-2" },
+            ],
+          },
+        },
+        {
+          key: "omega",
+          value: {
+            kind: "object",
+            entries: [
+              { key: "enabled", value: { kind: "boolean", value: true } },
+              { key: "label", value: { kind: "string", value: "paid" } },
+            ],
+          },
+        },
+      ],
+    };
+    const declaration = declarationWithChange({
+      kind: "enum_widen",
+      before: { enum: [canonicalValue] },
+      after: { enum: [canonicalValue] },
+    });
+
+    assert.equal(validateDeclaration(declaration).ok, true);
+  });
+});
+
 test("enforces target, deprecation, and removal order when both later dates exist", () => {
   const declaration = structuredClone(minimalDeclaration);
   declaration.intent.timeline = {
@@ -566,6 +761,118 @@ test("replays a complete lifecycle including the review-escalating response exce
     ok: true,
     value: declaration,
     diagnostics: [],
+  });
+});
+
+test("requires every consumer's latest current-revision response before acceptance", async (t) => {
+  const invalidCases = [
+    ["one consumer with no response", acceptanceDeclaration()],
+    [
+      "multiple consumers with no responses",
+      acceptanceDeclaration({ consumerTeams: ["analytics", "risk"] }),
+    ],
+    [
+      "a latest OBJECTED response",
+      acceptanceDeclaration({
+        decisions: [
+          { team: "analytics", decision: "ACKNOWLEDGED" },
+          { team: "analytics", decision: "OBJECTED" },
+        ],
+      }),
+    ],
+    [
+      "a latest EXTENSION_REQUESTED response",
+      acceptanceDeclaration({
+        decisions: [
+          { team: "analytics", decision: "ACKNOWLEDGED" },
+          { team: "analytics", decision: "EXTENSION_REQUESTED" },
+        ],
+      }),
+    ],
+    [
+      "a stale acknowledgement from a prior revision",
+      acceptanceDeclaration({
+        decisions: [{ team: "analytics", decision: "ACKNOWLEDGED" }],
+        updateAfterResponses: true,
+      }),
+    ],
+    [
+      "partial acknowledgements",
+      acceptanceDeclaration({
+        consumerTeams: ["analytics", "risk"],
+        decisions: [{ team: "analytics", decision: "ACKNOWLEDGED" }],
+      }),
+    ],
+  ];
+
+  for (const [name, declaration] of invalidCases) {
+    await t.test(name, () => {
+      const acceptedIndex = declaration.events.length - 1;
+      const result = validateDeclaration(declaration);
+
+      assert.equal(result.ok, false);
+      assert.ok(
+        result.diagnostics.some(
+          (diagnostic) =>
+            diagnostic.code === "SEIP_LIFECYCLE_ACCEPTANCE_PRECONDITION" &&
+            diagnostic.path === `/events/${acceptedIndex}/type`,
+        ),
+      );
+    });
+  }
+
+  await t.test("accepts a declaration with zero consumers", () => {
+    const declaration = acceptanceDeclaration({ consumerTeams: [] });
+
+    assert.equal(validateDeclaration(declaration).ok, true);
+  });
+
+  await t.test("accepts when every latest current-revision response acknowledges", () => {
+    const declaration = acceptanceDeclaration({
+      consumerTeams: ["analytics", "risk"],
+      decisions: [
+        { team: "analytics", decision: "ACKNOWLEDGED" },
+        { team: "risk", decision: "ACKNOWLEDGED" },
+      ],
+    });
+
+    assert.equal(validateDeclaration(declaration).ok, true);
+  });
+
+  await t.test("does not infer acceptance from acknowledgements", () => {
+    const declaration = acceptanceDeclaration({
+      decisions: [{ team: "analytics", decision: "ACKNOWLEDGED" }],
+    });
+    declaration.events.pop();
+    declaration.status = "PROPOSED";
+
+    const result = validateDeclaration(declaration);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.value.status, "PROPOSED");
+  });
+
+  await t.test("aggregates the acceptance diagnostic with independent replay failures", () => {
+    const declaration = acceptanceDeclaration();
+    declaration.revision = 2;
+
+    const result = validateDeclaration(declaration);
+
+    assert.equal(result.ok, false);
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "SEIP_LIFECYCLE_ACCEPTANCE_PRECONDITION" &&
+          diagnostic.path === "/events/2/type",
+      ),
+    );
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "SEIP_LIFECYCLE_REVISION_INVALID" &&
+          diagnostic.path === "/revision",
+      ),
+    );
   });
 });
 
