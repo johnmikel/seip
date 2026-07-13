@@ -3,6 +3,7 @@ export type { CanonicalValue } from "./canonical-value.js";
 export { canonicalize } from "./canonicalize.js";
 export * from "./declaration.js";
 export * from "./diagnostics.js";
+export * from "./lifecycle.js";
 export { computeChangeId, sortChanges } from "./fingerprint.js";
 export type {
   NormalizedChange,
