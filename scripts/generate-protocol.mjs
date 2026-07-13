@@ -29,6 +29,11 @@ function generateStandaloneValidator(schema) {
     },
   });
   addFormats(ajv);
+  ajv.addKeyword({
+    keyword: "tsType",
+    schemaType: "string",
+    valid: true,
+  });
   const validate = ajv.compile(schema);
   return standaloneCode(ajv, validate);
 }

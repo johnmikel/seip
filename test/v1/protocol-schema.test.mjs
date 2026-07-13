@@ -58,7 +58,11 @@ test("rejects the v0.1 consumer status field", async () => {
   const result = validateProtocolSchema(declaration);
 
   assertInvalid(result, "SEIP_PROTOCOL_SCHEMA_INVALID");
-  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === "/consumers/0"));
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) => diagnostic.path === "/consumers/0/status",
+    ),
+  );
 });
 
 test("executes RFC 3339 date-time validation in the bundled validator", async () => {
@@ -111,6 +115,226 @@ test("keeps canonical-value variants closed and rejects bare snapshot numbers", 
   const canonicalNumber = structuredClone(declaration);
   canonicalNumber.changes[0].after = { kind: "number", decimal: "1e0" };
   assert.equal(validateProtocolSchema(canonicalNumber).ok, true);
+});
+
+test("accepts only the canonical decimal spelling", async () => {
+  const declaration = await loadFixture("valid/minimal-declaration.json");
+  const declarationSchema = JSON.parse(
+    await readFile(new URL("../../seip.schema.json", import.meta.url), "utf8"),
+  );
+  assert.equal(
+    declarationSchema.$defs.CanonicalNumber.properties.decimal.pattern,
+    "^(?:0e0|-?[1-9](?:[0-9]*[1-9])?e(?:0|-?[1-9][0-9]*))$",
+  );
+
+  for (const decimal of ["0e0", "1e0", "-1e0", "123e-4", "101e2"]) {
+    const candidate = structuredClone(declaration);
+    candidate.changes[0].after = { kind: "number", decimal };
+    assert.equal(validateProtocolSchema(candidate).ok, true, decimal);
+  }
+
+  for (const decimal of [
+    "1e-0",
+    "1e00",
+    "1e+0",
+    "10e0",
+    "01e0",
+    "-01e0",
+  ]) {
+    const candidate = structuredClone(declaration);
+    candidate.changes[0].after = { kind: "number", decimal };
+    assertInvalid(validateProtocolSchema(candidate), "SEIP_PROTOCOL_SCHEMA_INVALID");
+  }
+});
+
+test("wrappers enforce keyed uniqueness beyond standard uniqueItems", async () => {
+  const declarationSchema = JSON.parse(
+    await readFile(new URL("../../seip.schema.json", import.meta.url), "utf8"),
+  );
+  const amendmentSchema = JSON.parse(
+    await readFile(
+      new URL("../../seip.amendment.schema.json", import.meta.url),
+      "utf8",
+    ),
+  );
+
+  for (const field of ["changes", "consumers", "responses", "evidence", "events"]) {
+    assert.equal(declarationSchema.properties[field].uniqueItems, true, field);
+  }
+  assert.equal(
+    declarationSchema.$defs.CanonicalObject.properties.entries.uniqueItems,
+    true,
+  );
+  assert.equal(
+    amendmentSchema.$defs.ConsumerOperations.properties.add.uniqueItems,
+    true,
+  );
+  assert.equal(
+    amendmentSchema.$defs.ConsumerOperations.properties.update.uniqueItems,
+    true,
+  );
+
+  const extended = await loadFixture("valid/extended-declaration.json");
+  const declarationCases = [];
+
+  const changes = structuredClone(extended);
+  changes.changes.push({
+    ...structuredClone(changes.changes[0]),
+    target: {
+      ...structuredClone(changes.changes[0].target),
+      object: "ArchivedOrder",
+    },
+  });
+  declarationCases.push([changes, "/changes/1/change_id"]);
+
+  const consumers = structuredClone(extended);
+  consumers.consumers.push({
+    ...structuredClone(consumers.consumers[0]),
+    contact: "different@example.com",
+  });
+  declarationCases.push([consumers, "/consumers/1/team"]);
+
+  const responses = structuredClone(extended);
+  responses.responses.push({
+    ...structuredClone(responses.responses[0]),
+    message: "A different response with the same identity.",
+  });
+  declarationCases.push([responses, "/responses/1/response_id"]);
+
+  const evidence = structuredClone(extended);
+  evidence.evidence.push({
+    ...structuredClone(evidence.evidence[0]),
+    summary: "Different evidence with the same identity.",
+  });
+  declarationCases.push([evidence, "/evidence/1/evidence_id"]);
+
+  const events = structuredClone(extended);
+  events.events.push({
+    ...structuredClone(events.events[0]),
+    actor: "a-different-actor",
+  });
+  declarationCases.push([events, "/events/1/event_id"]);
+
+  const canonicalEntries = structuredClone(extended);
+  canonicalEntries.changes[0].after = {
+    kind: "object",
+    entries: [
+      { key: "state", value: { kind: "string", value: "old" } },
+      { key: "state", value: { kind: "string", value: "new" } },
+    ],
+  };
+  declarationCases.push([
+    canonicalEntries,
+    "/changes/0/after/entries/1/key",
+  ]);
+
+  // Each pair differs structurally, so schema `uniqueItems` alone cannot reject it.
+  for (const [candidate, expectedPath] of declarationCases) {
+    const result = validateProtocolSchema(candidate);
+    assertInvalid(result, "SEIP_PROTOCOL_SCHEMA_INVALID");
+    assert.ok(
+      result.diagnostics.some((diagnostic) => diagnostic.path === expectedPath),
+      expectedPath,
+    );
+    assert.deepEqual(result, validateProtocolSchema(candidate));
+  }
+
+  const amendmentCases = [
+    [
+      {
+        consumers: {
+          add: [
+            { team: "risk", contact: "risk@example.com" },
+            { team: "risk", contact: "risk-oncall@example.com" },
+          ],
+        },
+      },
+      "/consumers/add/1/team",
+    ],
+    [
+      {
+        consumers: {
+          update: [
+            { team: "analytics", contact: "one@example.com" },
+            { team: "analytics", contact: "two@example.com" },
+          ],
+        },
+      },
+      "/consumers/update/1/team",
+    ],
+  ];
+  for (const [candidate, expectedPath] of amendmentCases) {
+    const result = validateAmendmentSchema(candidate);
+    assertInvalid(result, "SEIP_LIFECYCLE_AMENDMENT_INVALID");
+    assert.ok(
+      result.diagnostics.some((diagnostic) => diagnostic.path === expectedPath),
+      expectedPath,
+    );
+    assert.deepEqual(result, validateAmendmentSchema(candidate));
+  }
+});
+
+test("semantic uniqueness checks respect ownProperties", async () => {
+  const declaration = await loadFixture("valid/minimal-declaration.json");
+  const change = declaration.changes[0];
+  delete change.after;
+  change.kind = "warehouse:detector";
+  Object.setPrototypeOf(change, {
+    after: {
+      kind: "object",
+      entries: [
+        { key: "state", value: { kind: "string", value: "old" } },
+        { key: "state", value: { kind: "string", value: "new" } },
+      ],
+    },
+  });
+  assert.equal(validateProtocolSchema(declaration).ok, true);
+
+  const amendment = Object.assign(
+    Object.create({
+      consumers: {
+        add: [
+          { team: "risk", contact: "one@example.com" },
+          { team: "risk", contact: "two@example.com" },
+        ],
+      },
+    }),
+    { intent: { summary: "Clarified migration" } },
+  );
+  assert.equal(validateAmendmentSchema(amendment).ok, true);
+});
+
+test("rejects duplicate migration steps in declarations and amendments", async () => {
+  const declarationSchema = JSON.parse(
+    await readFile(new URL("../../seip.schema.json", import.meta.url), "utf8"),
+  );
+  const amendmentSchema = JSON.parse(
+    await readFile(
+      new URL("../../seip.amendment.schema.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    declarationSchema.$defs.Migration.properties.steps.uniqueItems,
+    true,
+  );
+  assert.equal(
+    amendmentSchema.$defs.MigrationMergePatch.properties.steps.anyOf.find(
+      (variant) => variant.type === "array",
+    ).uniqueItems,
+    true,
+  );
+
+  const declaration = await loadFixture("valid/minimal-declaration.json");
+  declaration.intent.migration.steps = ["deploy", "deploy"];
+  assertInvalid(validateProtocolSchema(declaration), "SEIP_PROTOCOL_SCHEMA_INVALID");
+
+  assertInvalid(
+    validateAmendmentSchema({
+      intent: { migration: { steps: ["deploy", "deploy"] } },
+    }),
+    "SEIP_LIFECYCLE_AMENDMENT_INVALID",
+  );
 });
 
 test("enforces structural snapshot presence for standard change kinds", async () => {
@@ -232,9 +456,82 @@ test("publishes RFC 3339 timestamp patterns for annotation-only validators", asy
 
   assert.deepEqual(patterns.map((pattern) => typeof pattern), ["string", "string"]);
   for (const pattern of patterns) {
-    assert.equal(new RegExp(pattern).test("2026-07-13T09:00:00Z"), true);
-    assert.equal(new RegExp(pattern).test("2026/07/13 09:00:00"), false);
+    const expression = new RegExp(pattern);
+    assert.equal(expression.test("2026-07-13T09:00:00Z"), true);
+    assert.equal(expression.test("2024-02-29T09:00:00Z"), true);
+    for (const invalid of [
+      "2026-02-31T09:00:00Z",
+      "2026-04-31T09:00:00Z",
+      "2026-13-01T09:00:00Z",
+      "2026-07-13T24:00:00Z",
+      "2026-07-13T09:00:00+24:00",
+      "2026-07-13T09:00:00+01:60",
+      "2026/07/13 09:00:00",
+    ]) {
+      assert.equal(expression.test(invalid), false, invalid);
+    }
   }
+
+  // The portable fallback checks calendar shape; Ajv's format check supplies
+  // the year-aware leap-day rule.
+  const declaration = await loadFixture("valid/minimal-declaration.json");
+  declaration.created_at = "2023-02-29T09:00:00Z";
+  assertInvalid(validateProtocolSchema(declaration), "SEIP_PROTOCOL_SCHEMA_INVALID");
+  assertInvalid(
+    validateAmendmentSchema({
+      intent: { timeline: { review_deadline: "2023-02-29T09:00:00Z" } },
+    }),
+    "SEIP_LIFECYCLE_AMENDMENT_INVALID",
+  );
+});
+
+test("rejects credential-bearing artifact query parameters case-insensitively", async () => {
+  const declaration = await loadFixture("valid/extended-declaration.json");
+  const credentialKeys = [
+    "client_secret",
+    "Authorization",
+    "X-Amz-Credential",
+    "token",
+    "tokens",
+    "password",
+    "passwords",
+    "api_key",
+    "API_KEYS",
+    "access-key",
+    "access_keys",
+    "credential",
+    "credentials",
+    "signature",
+    "signatures",
+    "X-Amz-Signature",
+  ];
+
+  for (const key of credentialKeys) {
+    const candidate = structuredClone(declaration);
+    candidate.evidence[0].artifact.uri = `https://example.com/report?${key}=secret`;
+    assertInvalid(validateProtocolSchema(candidate), "SEIP_PROTOCOL_SCHEMA_INVALID");
+  }
+
+  const benign = structuredClone(declaration);
+  benign.evidence[0].artifact.uri =
+    "https://example.com/report?version=1&region=eu";
+  assert.equal(validateProtocolSchema(benign).ok, true);
+});
+
+test("generates exact detector kinds and forbids Consumer.status in TypeScript", async () => {
+  const generated = await readFile(
+    new URL("../../src/generated/protocol-types.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    generated,
+    /export type DetectorSpecificChange = NormalizedChangeCore & \{\n  kind: `\$\{string\}:\$\{string\}`;/,
+  );
+  assert.match(
+    generated,
+    /export interface Consumer \{[\s\S]*?status\?: never;[\s\S]*?\[k: string\]: unknown;[\s\S]*?\}/,
+  );
 });
 
 test("rejects amendment reason and declaration-owned fields", async () => {

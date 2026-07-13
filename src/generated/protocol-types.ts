@@ -70,7 +70,7 @@ export type UnknownChange =
       after: SnapshotValue;
     });
 export type DetectorSpecificChange = NormalizedChangeCore & {
-  kind: string;
+  kind: `${string}:${string}`;
 };
 export type NonEmptyTrimmedString = string;
 export type ConsumerDependencies = string[];
@@ -229,6 +229,7 @@ export interface Consumer {
   team: TeamIdentifier;
   contact?: string;
   dependencies?: ConsumerDependencies;
+  status?: never;
   [k: string]: unknown;
 }
 export interface ConsumerResponse {

@@ -57,18 +57,21 @@
     },
     "responses": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/Response"
       }
     },
     "evidence": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/Evidence"
       }
     },
     "events": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/Event"
       }
@@ -135,7 +138,7 @@
       "title": "RFC 3339 Timestamp",
       "type": "string",
       "format": "date-time",
-      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"
+      "pattern": "^[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-9]))[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])(?![\\s\\S])"
     },
     "Sha256Digest": {
       "title": "SHA-256 Digest",
@@ -321,7 +324,7 @@
         },
         "decimal": {
           "type": "string",
-          "pattern": "^(?:0e0|-?[1-9](?:[0-9]*[1-9])?e-?(?:0|[1-9][0-9]*))$"
+          "pattern": "^(?:0e0|-?[1-9](?:[0-9]*[1-9])?e(?:0|-?[1-9][0-9]*))$"
         }
       }
     },
@@ -687,7 +690,8 @@
           "properties": {
             "kind": {
               "type": "string",
-              "pattern": "^[^:]+:.+$"
+              "pattern": "^[^:]+:.+$",
+              "tsType": "`${string}:${string}`"
             }
           }
         }
@@ -726,6 +730,7 @@
         },
         "steps": {
           "type": "array",
+          "uniqueItems": true,
           "items": {
             "type": "string"
           }
@@ -810,16 +815,8 @@
         },
         "dependencies": {
           "$ref": "#/$defs/DependencyList"
-        }
-      },
-      "not": {
-        "type": "object",
-        "required": [
-          "status"
-        ],
-        "properties": {
-          "status": {}
-        }
+        },
+        "status": false
       }
     },
     "ResponseDecision": {
@@ -874,7 +871,7 @@
       "format": "uri",
       "pattern": "^(?:https://(?![^/?#]*@)[^\\s/?#@]+(?:[/?#][^\\s]*)?|urn:[A-Za-z0-9][A-Za-z0-9-]{0,31}:[^\\s]+)$",
       "not": {
-        "pattern": "[?&](?:[Aa][Cc][Cc][Ee][Ss][Ss][_-]?[Tt][Oo][Kk][Ee][Nn]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Pp][Aa][Ss][Ss](?:[Ww][Oo][Rr][Dd]|[Ww][Dd])?|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])="
+        "pattern": "[?&](?:[Aa][Cc][Cc][Ee][Ss][Ss][_-]?(?:[Tt][Oo][Kk][Ee][Nn][Ss]?|[Kk][Ee][Yy][Ss]?)|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy][Ss]?|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][_-]?[Ss][Ee][Cc][Rr][Ee][Tt][Ss]?|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][Ss]?|[Pp][Aa][Ss][Ss](?:[Ww][Oo][Rr][Dd][Ss]?|[Ww][Dd])?|[Ss][Ee][Cc][Rr][Ee][Tt][Ss]?|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee][Ss]?|[Tt][Oo][Kk][Ee][Nn][Ss]?|[Xx][_-]?[Aa][Mm][Zz][_-]?(?:[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]))="
       }
     },
     "Artifact": {

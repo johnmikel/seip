@@ -26,6 +26,11 @@ interface GeneratedValidator {
 type DiagnosticCode =
   SchemaValidationResult["diagnostics"][number]["code"];
 type SchemaDiagnostic = SchemaValidationResult["diagnostics"][number];
+type JsonRecord = Record<string, unknown>;
+type SemanticValidator = (
+  value: unknown,
+  code: DiagnosticCode,
+) => SchemaDiagnostic[];
 
 const protocolValidator =
   protocolValidatorModule as unknown as GeneratedValidator;
@@ -68,13 +73,185 @@ function normalizeDiagnostics(
   return [...unique.values()].sort(compareDiagnostics);
 }
 
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function escapeJsonPointerToken(token: string): string {
+  return token.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+function appendDuplicateKeyDiagnostics(
+  value: unknown,
+  key: string,
+  arrayPath: string,
+  code: DiagnosticCode,
+  diagnostics: SchemaDiagnostic[],
+): void {
+  if (!Array.isArray(value)) return;
+
+  const seen = new Set<string>();
+  value.forEach((item, index) => {
+    if (!isJsonRecord(item)) return;
+    if (!Object.hasOwn(item, key)) return;
+    const keyValue = item[key];
+    if (typeof keyValue !== "string") return;
+
+    if (seen.has(keyValue)) {
+      diagnostics.push({
+        code,
+        severity: "error",
+        message: `must have unique ${key} values`,
+        path: `${arrayPath}/${index}/${escapeJsonPointerToken(key)}`,
+      });
+    } else {
+      seen.add(keyValue);
+    }
+  });
+}
+
+function appendCanonicalObjectDiagnostics(
+  value: unknown,
+  path: string,
+  code: DiagnosticCode,
+  diagnostics: SchemaDiagnostic[],
+  ancestors: Set<object>,
+): void {
+  if (typeof value !== "object" || value === null) return;
+  if (ancestors.has(value)) return;
+  ancestors.add(value);
+
+  try {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => {
+        appendCanonicalObjectDiagnostics(
+          item,
+          `${path}/${index}`,
+          code,
+          diagnostics,
+          ancestors,
+        );
+      });
+      return;
+    }
+
+    if (!isJsonRecord(value)) return;
+
+    if (
+      Object.hasOwn(value, "kind") &&
+      Object.hasOwn(value, "entries") &&
+      value.kind === "object" &&
+      Array.isArray(value.entries)
+    ) {
+      appendDuplicateKeyDiagnostics(
+        value.entries,
+        "key",
+        `${path}/entries`,
+        code,
+        diagnostics,
+      );
+    }
+
+    for (const [property, nestedValue] of Object.entries(value)) {
+      appendCanonicalObjectDiagnostics(
+        nestedValue,
+        `${path}/${escapeJsonPointerToken(property)}`,
+        code,
+        diagnostics,
+        ancestors,
+      );
+    }
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+// JSON Schema's `uniqueItems` compares whole records. These wrapper checks add
+// uniqueness projected by protocol identity keys without making the published
+// schemas depend on a non-standard runtime keyword.
+function validateProtocolSemantics(
+  value: unknown,
+  code: DiagnosticCode,
+): SchemaDiagnostic[] {
+  if (!isJsonRecord(value)) return [];
+
+  const diagnostics: SchemaDiagnostic[] = [];
+  for (const [field, key] of [
+    ["changes", "change_id"],
+    ["consumers", "team"],
+    ["responses", "response_id"],
+    ["evidence", "evidence_id"],
+    ["events", "event_id"],
+  ] as const) {
+    if (!Object.hasOwn(value, field)) continue;
+    appendDuplicateKeyDiagnostics(
+      value[field],
+      key,
+      `/${field}`,
+      code,
+      diagnostics,
+    );
+  }
+
+  if (Object.hasOwn(value, "changes") && Array.isArray(value.changes)) {
+    value.changes.forEach((change, index) => {
+      if (!isJsonRecord(change)) return;
+      for (const snapshot of ["before", "after"] as const) {
+        if (!Object.hasOwn(change, snapshot)) continue;
+        appendCanonicalObjectDiagnostics(
+          change[snapshot],
+          `/changes/${index}/${snapshot}`,
+          code,
+          diagnostics,
+          new Set<object>(),
+        );
+      }
+    });
+  }
+
+  return diagnostics;
+}
+
+function validateAmendmentSemantics(
+  value: unknown,
+  code: DiagnosticCode,
+): SchemaDiagnostic[] {
+  if (!isJsonRecord(value) || !Object.hasOwn(value, "consumers")) return [];
+  const consumers = value.consumers;
+  if (!isJsonRecord(consumers)) return [];
+
+  const diagnostics: SchemaDiagnostic[] = [];
+  for (const operation of ["add", "update"] as const) {
+    if (!Object.hasOwn(consumers, operation)) continue;
+    appendDuplicateKeyDiagnostics(
+      consumers[operation],
+      "team",
+      `/consumers/${operation}`,
+      code,
+      diagnostics,
+    );
+  }
+  return diagnostics;
+}
+
 function validateWith(
   validator: GeneratedValidator,
   value: unknown,
   code: DiagnosticCode,
+  validateSemantics?: SemanticValidator,
 ): SchemaValidationResult {
   try {
     if (validator(value)) {
+      const diagnostics = normalizeDiagnostics(
+        validateSemantics?.(value, code) ?? [],
+      );
+      if (diagnostics.length > 0) {
+        return {
+          ok: false,
+          diagnostics,
+        };
+      }
+
       return {
         ok: true,
         diagnostics: [],
@@ -132,6 +309,7 @@ export function validateProtocolSchema(
     protocolValidator,
     value,
     "SEIP_PROTOCOL_SCHEMA_INVALID",
+    validateProtocolSemantics,
   );
 }
 
@@ -142,5 +320,6 @@ export function validateAmendmentSchema(
     amendmentValidator,
     value,
     "SEIP_LIFECYCLE_AMENDMENT_INVALID",
+    validateAmendmentSemantics,
   );
 }
