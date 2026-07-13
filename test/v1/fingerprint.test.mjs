@@ -15,6 +15,71 @@ void sortChanges;
 
 const PROPERTY_SEED = 0x5e1f2026;
 const PROPERTY_RUNS = 200;
+const CANONICAL_VALUE_KINDS = [
+  "array",
+  "boolean",
+  "null",
+  "number",
+  "object",
+  "string",
+];
+
+const canonicalCoefficientArbitrary = fc.oneof(
+  fc.integer({ min: 1, max: 9 }).map(String),
+  fc
+    .tuple(
+      fc.integer({ min: 1, max: 9 }),
+      fc.array(fc.integer({ min: 0, max: 9 }), { maxLength: 5 }),
+      fc.integer({ min: 1, max: 9 }),
+    )
+    .map(([first, middle, last]) => `${first}${middle.join("")}${last}`),
+);
+const canonicalExponentArbitrary = fc.oneof(
+  fc.constant("0"),
+  fc.integer({ min: 1, max: 1_000 }).map(String),
+  fc.integer({ min: -1_000, max: -1 }).map(String),
+);
+const canonicalDecimalArbitrary = fc.oneof(
+  fc.constant("0e0"),
+  fc
+    .tuple(
+      fc.boolean(),
+      canonicalCoefficientArbitrary,
+      canonicalExponentArbitrary,
+    )
+    .map(
+      ([negative, coefficient, exponent]) =>
+        `${negative ? "-" : ""}${coefficient}e${exponent}`,
+    ),
+);
+
+const canonicalValueArbitrary = fc.letrec((tie) => ({
+  value: fc.oneof(
+    { depthSize: "small" },
+    fc.constant(null).map(() => ({ kind: "null" })),
+    fc.boolean().map((value) => ({ kind: "boolean", value })),
+    fc.string({ maxLength: 8 }).map((value) => ({ kind: "string", value })),
+    canonicalDecimalArbitrary.map((decimal) => ({ kind: "number", decimal })),
+    tie("array"),
+    tie("object"),
+  ),
+  array: fc
+    .array(tie("value"), { maxLength: 4 })
+    .map((items) => ({ kind: "array", items })),
+  object: fc
+    .uniqueArray(fc.tuple(fc.string({ maxLength: 8 }), tie("value")), {
+      maxLength: 4,
+      selector: ([key]) => key,
+    })
+    .map((pairs) => ({
+      kind: "object",
+      entries: pairs
+        .map(([key, value]) => ({ key, value }))
+        .sort((left, right) =>
+          left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
+        ),
+    })),
+})).value;
 
 function assertFailure(result, code) {
   assert.equal(result.ok, false);
@@ -48,6 +113,59 @@ function reverseRecordInsertion(value) {
     });
   }
   return reordered;
+}
+
+function inspectCanonicalValue(root, observedKinds) {
+  const pending = [{ depth: 0, value: root }];
+  let sawNestedValue = false;
+
+  while (pending.length > 0) {
+    const frame = pending.pop();
+    assert.ok(frame);
+    const { depth, value } = frame;
+    observedKinds.add(value.kind);
+    if (depth > 0) sawNestedValue = true;
+
+    if (value.kind === "number") {
+      assert.deepEqual(normalizeDecimalLexeme(value.decimal), {
+        ok: true,
+        value: value.decimal,
+        diagnostics: [],
+      });
+    } else if (value.kind === "array") {
+      for (const item of value.items) {
+        pending.push({ depth: depth + 1, value: item });
+      }
+    } else if (value.kind === "object") {
+      for (let index = 1; index < value.entries.length; index += 1) {
+        assert.ok(value.entries[index - 1].key < value.entries[index].key);
+      }
+      for (const entry of value.entries) {
+        pending.push({ depth: depth + 1, value: entry.value });
+      }
+    }
+  }
+
+  return sawNestedValue;
+}
+
+function reverseCanonicalObjectEntries(value) {
+  if (value.kind === "array") {
+    return {
+      kind: "array",
+      items: value.items.map(reverseCanonicalObjectEntries),
+    };
+  }
+  if (value.kind === "object") {
+    return {
+      kind: "object",
+      entries: value.entries.toReversed().map((entry) => ({
+        key: entry.key,
+        value: reverseCanonicalObjectEntries(entry.value),
+      })),
+    };
+  }
+  return structuredClone(value);
 }
 
 test("normalizes strict JSON decimal lexemes without IEEE-754 conversion", () => {
@@ -317,6 +435,50 @@ function snapshotShape(kind, snapshots = {}) {
   delete value.after;
   return Object.assign(value, snapshots);
 }
+
+test(`tagged CanonicalValue properties are reproducible (seed ${PROPERTY_SEED}, runs ${PROPERTY_RUNS})`, () => {
+  const observedKinds = new Set();
+  let sawNestedValue = false;
+
+  fc.assert(
+    fc.property(canonicalValueArbitrary, (value) => {
+      const valueBefore = structuredClone(value);
+      sawNestedValue =
+        inspectCanonicalValue(value, observedKinds) || sawNestedValue;
+
+      const firstCanonical = canonicalize(value);
+      const secondCanonical = canonicalize(value);
+      assert.equal(firstCanonical.ok, true);
+      assert.deepEqual(firstCanonical, secondCanonical);
+      assert.deepEqual(value, valueBefore);
+
+      const change = changeWith({ before: { generated: value } });
+      const changeBefore = structuredClone(change);
+      const firstFingerprint = computeChangeId(change);
+      const secondFingerprint = computeChangeId(change);
+      assert.equal(firstFingerprint.ok, true, JSON.stringify(firstFingerprint));
+      assert.deepEqual(firstFingerprint, secondFingerprint);
+      assert.deepEqual(change, changeBefore);
+
+      const reordered = changeWith({
+        before: { generated: reverseCanonicalObjectEntries(value) },
+      });
+      const reorderedBefore = structuredClone(reordered);
+      const reorderedFingerprint = computeChangeId(reordered);
+      assert.equal(
+        reorderedFingerprint.ok,
+        true,
+        JSON.stringify(reorderedFingerprint),
+      );
+      assert.equal(reorderedFingerprint.value, firstFingerprint.value);
+      assert.deepEqual(reordered, reorderedBefore);
+    }),
+    { seed: PROPERTY_SEED, numRuns: PROPERTY_RUNS },
+  );
+
+  assert.deepEqual([...observedKinds].sort(), CANONICAL_VALUE_KINDS);
+  assert.equal(sawNestedValue, true);
+});
 
 test("computes the independent v1 SHA-256 fixture", () => {
   assert.deepEqual(computeChangeId(BASE_CHANGE), {
