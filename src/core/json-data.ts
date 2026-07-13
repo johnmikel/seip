@@ -36,12 +36,14 @@ export type JsonDataPreflightResult =
   | { ok: false; issue: JsonDataIssue };
 
 interface VisitFrame {
+  depth: number;
   kind: "visit";
   value: unknown;
   path?: string;
 }
 
 interface ContainerFrame {
+  depth: number;
   index: number;
   keys?: string[];
   kind: "container";
@@ -53,7 +55,12 @@ type Frame = ContainerFrame | VisitFrame;
 
 interface JsonDataInspection {
   containerCount: number;
-  issue?: InvalidJsonDataIssue;
+  issue?: JsonDataIssue;
+}
+
+interface JsonDataInspectionHints {
+  maxContainers?: number;
+  maxDepth?: number;
 }
 
 const invalidJsonMessage = "must be JSON data" as const;
@@ -91,9 +98,17 @@ function resourceIssue(
   return result;
 }
 
-function ownDataMaxContainersHint(
+function isValidLimitHint(value: unknown): value is number {
+  return (
+    Number.isSafeInteger(value) &&
+    (value as number) >= 0 &&
+    (value as number) < Number.MAX_SAFE_INTEGER
+  );
+}
+
+function ownDataInspectionHints(
   limits: JsonDataLimits | undefined,
-): number | undefined {
+): JsonDataInspectionHints | undefined {
   if (
     limits === undefined ||
     (typeof limits !== "object" && typeof limits !== "function") ||
@@ -104,19 +119,17 @@ function ownDataMaxContainersHint(
   }
 
   try {
-    const descriptor = Reflect.getOwnPropertyDescriptor(
-      limits,
-      "maxContainers",
-    );
-    if (descriptor === undefined || !("value" in descriptor)) {
-      return undefined;
+    const hints: JsonDataInspectionHints = {};
+    for (const key of ["maxContainers", "maxDepth"] as const) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(limits, key);
+      if (descriptor === undefined || !("value" in descriptor)) continue;
+      if (descriptor.value === undefined) continue;
+      if (!isValidLimitHint(descriptor.value)) continue;
+      hints[key] = descriptor.value;
     }
-    const configured = descriptor.value;
-    return Number.isSafeInteger(configured) &&
-      configured >= 0 &&
-      configured < Number.MAX_SAFE_INTEGER
-      ? configured
-      : undefined;
+    return hints.maxContainers === undefined && hints.maxDepth === undefined
+      ? undefined
+      : hints;
   } catch {
     return undefined;
   }
@@ -135,20 +148,32 @@ function arrayIndex(key: string): number | undefined {
 /**
  * Inspects the JavaScript value model before schema validation without
  * invoking user code. Shared acyclic references are valid; back-edges are not.
- * A valid container-limit hint bounds completed empty-container identity state
- * after the result is already known to exceed that limit.
+ * Trusted own-data limit hints stop before inspecting a container that would
+ * exceed the configured unique-container or depth budget.
  */
 function inspectJsonData(
   value: unknown,
-  maxContainersHint?: number,
+  hints?: JsonDataInspectionHints,
 ): JsonDataInspection {
   const state = new WeakMap<object, "visiting" | "visited">();
-  const frames: Frame[] = [{ kind: "visit", value }];
+  const frames: Frame[] = [
+    {
+      depth: typeof value === "object" && value !== null ? 1 : 0,
+      kind: "visit",
+      value,
+    },
+  ];
   let containerCount = 0;
   let activePath: string | undefined;
   const invalid = (path?: string): JsonDataInspection => ({
     containerCount,
     issue: issue(path),
+  });
+  const limited = (
+    resource: "containers" | "depth",
+  ): JsonDataInspection => ({
+    containerCount,
+    issue: resourceIssue(resource),
   });
 
   try {
@@ -199,6 +224,7 @@ function inspectJsonData(
 
           const childPath = appendPath(frame.path, key);
           frames.push(frame, {
+            depth: frame.depth + 1,
             kind: "visit",
             value: child,
             path: childPath,
@@ -207,14 +233,7 @@ function inspectJsonData(
           break;
         }
         if (!scheduledChild) {
-          const saturated =
-            maxContainersHint !== undefined &&
-            containerCount > maxContainersHint;
-          if (saturated && length === 0) {
-            state.delete(frame.value);
-          } else {
-            state.set(frame.value, "visited");
-          }
+          state.set(frame.value, "visited");
         }
         continue;
       }
@@ -232,9 +251,20 @@ function inspectJsonData(
         continue;
       }
       if (typeof current !== "object") return invalid(path);
-      if (isProxy(current)) return invalid(path);
 
       const currentState = state.get(current);
+      if (
+        currentState === undefined &&
+        hints?.maxContainers !== undefined &&
+        containerCount >= hints.maxContainers
+      ) {
+        return limited("containers");
+      }
+      if (hints?.maxDepth !== undefined && frame.depth > hints.maxDepth) {
+        return limited("depth");
+      }
+
+      if (isProxy(current)) return invalid(path);
       if (currentState === "visiting") return invalid(path);
       if (currentState === "visited") continue;
 
@@ -286,14 +316,10 @@ function inspectJsonData(
           return invalid(appendPath(path, String(expectedIndex)));
         }
 
-        if (
-          maxContainersHint === undefined ||
-          containerCount <= maxContainersHint
-        ) {
-          containerCount += 1;
-        }
+        containerCount += 1;
         state.set(current, "visiting");
         frames.push({
+          depth: frame.depth,
           index: 0,
           kind: "container",
           ...(path === undefined ? {} : { path }),
@@ -319,14 +345,10 @@ function inspectJsonData(
           }
         }
 
-        if (
-          maxContainersHint === undefined ||
-          containerCount <= maxContainersHint
-        ) {
-          containerCount += 1;
-        }
+        containerCount += 1;
         state.set(current, "visiting");
         frames.push({
+          depth: frame.depth,
           index: 0,
           keys: stringKeys,
           kind: "container",
@@ -614,6 +636,7 @@ function findJsonResourceIssue(
   containerCount: number,
 ): JsonDataResourceLimitIssue | undefined {
   const maxContainers = limits.maxContainers;
+  const maxDepth = limits.maxDepth;
   for (const limit of limits.arrayLengthLimits ?? []) {
     validateLimit(limit.maxLength);
     let current = value;
@@ -642,9 +665,9 @@ function findJsonResourceIssue(
       return resourceIssue("containers");
     }
   }
-  if (limits.maxDepth !== undefined) {
-    validateLimit(limits.maxDepth);
-    if (exceedsDepthLimit(value, limits.maxDepth)) {
+  if (maxDepth !== undefined) {
+    validateLimit(maxDepth);
+    if (exceedsDepthLimit(value, maxDepth)) {
       return resourceIssue("depth");
     }
   }
@@ -796,7 +819,7 @@ export function preflightJsonData(
   value: unknown,
   limits?: JsonDataLimits,
 ): JsonDataPreflightResult {
-  const inspection = inspectJsonData(value, ownDataMaxContainersHint(limits));
+  const inspection = inspectJsonData(value, ownDataInspectionHints(limits));
   if (inspection.issue !== undefined) {
     return { ok: false, issue: inspection.issue };
   }

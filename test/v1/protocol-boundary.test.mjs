@@ -291,6 +291,52 @@ test("enforces exact optional JSON depth limits before cloning", () => {
   );
 });
 
+test("short-circuits an exact-size deep chain at a trusted depth limit", () => {
+  const probe = runWideJsonProbe(`
+    preflightJsonData([null], { maxDepth: 1 });
+    const depth = 1_048_574;
+    let value = null;
+    for (let index = 0; index < depth; index += 1) value = [value];
+    globalThis.keepAlive = value;
+    const bytes = 2 * depth + 4;
+    for (let index = 0; index < 3; index += 1) globalThis.gc();
+    const before = process.memoryUsage();
+    const beforeMaxRss = process.resourceUsage().maxRSS;
+    const result = preflightJsonData(value, {
+      maxBytes: 2 * 1024 * 1024,
+      maxContainers: 100_000,
+      maxDepth: 128,
+    });
+    const after = process.memoryUsage();
+    const afterMaxRss = process.resourceUsage().maxRSS;
+    process.stdout.write(JSON.stringify({
+      bytes,
+      result,
+      heapDelta: Math.max(0, after.heapUsed - before.heapUsed),
+      rssDelta: Math.max(
+        0,
+        after.rss - before.rss,
+        (afterMaxRss - beforeMaxRss) * 1024,
+      ),
+    }));
+  `);
+
+  assert.equal(probe.bytes, 2 * 1024 * 1024);
+  assert.deepEqual(probe.result, {
+    ok: false,
+    issue: {
+      kind: "resource_limit",
+      message: "exceeds JSON resource limits",
+      resource: "depth",
+    },
+  });
+  assert.ok(
+    probe.heapDelta < 64 * 1024 * 1024 &&
+      probe.rssDelta < 96 * 1024 * 1024,
+    `deep validity walk used ${probe.heapDelta} heap bytes and ${probe.rssDelta} RSS bytes`,
+  );
+});
+
 test("counts exact compact JSON UTF-8 bytes including escaping and DAG unfolding", () => {
   const shared = {
     "é😀\ud800": "quote: \" slash: \\ newline:\n",
@@ -449,7 +495,7 @@ test("counts unique JSON containers at exact configurable limits", () => {
   }
 });
 
-test("snapshots maxContainers without changing invalid-data precedence", () => {
+test("snapshots dynamic container and depth limits exactly once", () => {
   let changingReads = 0;
   const changingLimit = {
     get maxContainers() {
@@ -476,7 +522,34 @@ test("snapshots maxContainers without changing invalid-data precedence", () => {
     preflightJsonData([{}, {}], mutatingCollectionLimit),
     "containers",
   );
-  assert.equal(collectionReads, 1);
+  assert.equal(collectionReads, 0);
+
+  let changingDepthReads = 0;
+  const changingDepthLimit = {
+    get maxDepth() {
+      changingDepthReads += 1;
+      return changingDepthReads === 1 ? 1 : 2;
+    },
+  };
+  assertResourceIssue(
+    preflightJsonData(nestedArrays(2), changingDepthLimit),
+    "depth",
+  );
+  assert.equal(changingDepthReads, 1);
+
+  let mixedContainerReads = 0;
+  const mixedLimits = {
+    get maxContainers() {
+      mixedContainerReads += 1;
+      return 0;
+    },
+    maxDepth: 128,
+  };
+  assertResourceIssue(
+    preflightJsonData(nestedArrays(129), mixedLimits),
+    "depth",
+  );
+  assert.equal(mixedContainerReads, 0);
 
   let throwingReads = 0;
   const throwingLimit = {
@@ -634,7 +707,7 @@ test("bounds container-limit rejection for a pathological declaration", () => {
   );
 });
 
-test("reports a late wide-array accessor before a tiny resource limit", () => {
+test("does not reach a late wide-array accessor beyond a trusted cap", () => {
   const probe = runWideJsonProbe(`
     const value = Array(419_431).fill(null);
     value[0] = { invalid_nested_value: undefined };
@@ -654,11 +727,15 @@ test("reports a late wide-array accessor before a tiny resource limit", () => {
   assert.equal(probe.getterInvoked, false);
   assert.deepEqual(probe.result, {
     ok: false,
-    issue: { message: "must be JSON data", path: "/419430" },
+    issue: {
+      kind: "resource_limit",
+      message: "exceeds JSON resource limits",
+      resource: "containers",
+    },
   });
 });
 
-test("validates hostile descriptors before applying resource limits", () => {
+test("validates hostile descriptors while they remain within trusted limits", () => {
   let getterInvoked = false;
   const accessor = {};
   Object.defineProperty(accessor, "payload", {
@@ -671,7 +748,7 @@ test("validates hostile descriptors before applying resource limits", () => {
 
   const result = preflightJsonData(accessor, {
     maxBytes: 1,
-    maxContainers: 0,
+    maxContainers: 1,
     maxDepth: 1,
   });
 
@@ -682,24 +759,18 @@ test("validates hostile descriptors before applying resource limits", () => {
   assert.equal(getterInvoked, false);
 });
 
-test("preserves invalid-data precedence after container saturation", () => {
+test("does not inspect invalid data beyond a trusted container cap", () => {
   const nonfinite = { value: Number.POSITIVE_INFINITY };
-  assert.deepEqual(
-    preflightJsonData([{}, nonfinite], { maxContainers: 0 }),
-    {
-      ok: false,
-      issue: { message: "must be JSON data", path: "/1/value" },
-    },
+  assertResourceIssue(
+    preflightJsonData([{}, nonfinite], { maxContainers: 2 }),
+    "containers",
   );
 
   const cyclic = {};
   cyclic.self = cyclic;
-  assert.deepEqual(
-    preflightJsonData([{}, cyclic], { maxContainers: 0 }),
-    {
-      ok: false,
-      issue: { message: "must be JSON data", path: "/1/self" },
-    },
+  assertResourceIssue(
+    preflightJsonData([{}, cyclic], { maxContainers: 2 }),
+    "containers",
   );
 
   let getterInvoked = false;
@@ -711,14 +782,31 @@ test("preserves invalid-data precedence after container saturation", () => {
       throw new Error("must not execute");
     },
   });
-  assert.deepEqual(
-    preflightJsonData([{}, accessor], { maxContainers: 0 }),
-    {
-      ok: false,
-      issue: { message: "must be JSON data", path: "/1/payload" },
-    },
+  assertResourceIssue(
+    preflightJsonData([{}, accessor], { maxContainers: 2 }),
+    "containers",
   );
   assert.equal(getterInvoked, false);
+
+  let proxyTraps = 0;
+  const proxied = new Proxy(
+    {},
+    {
+      getPrototypeOf() {
+        proxyTraps += 1;
+        throw new Error("must not inspect a container beyond the cap");
+      },
+      ownKeys() {
+        proxyTraps += 1;
+        throw new Error("must not inspect a container beyond the cap");
+      },
+    },
+  );
+  assertResourceIssue(
+    preflightJsonData([{}, proxied], { maxContainers: 2 }),
+    "containers",
+  );
+  assert.equal(proxyTraps, 0);
 
   const sharedScalarLeaf = { value: null };
   assertResourceIssue(
@@ -727,6 +815,28 @@ test("preserves invalid-data precedence after container saturation", () => {
       { maxContainers: 0 },
     ),
     "containers",
+  );
+});
+
+test("preserves collection limits for ordinary in-budget data", () => {
+  assert.deepEqual(
+    preflightJsonData(
+      { items: [null, null] },
+      {
+        arrayLengthLimits: [{ path: ["items"], maxLength: 1 }],
+        maxContainers: 2,
+        maxDepth: 2,
+      },
+    ),
+    {
+      ok: false,
+      issue: {
+        kind: "resource_limit",
+        message: "exceeds JSON resource limits",
+        path: "/items",
+        resource: "collection",
+      },
+    },
   );
 });
 

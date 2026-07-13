@@ -962,9 +962,11 @@ export function createDeclaration(
 
 - [ ] **Step 5: Bound validated declaration resources before expensive work**
 
-The declaration preflight must enforce these v1 defaults after completing
-reflection-safety validation and before depth, byte, shared-expansion, schema,
-semantic, or clone work:
+The declaration preflight must enforce these v1 defaults before schema,
+semantic, shared-expansion, or clone work. Valid non-proxy own-data container
+and depth limits are enforced during the reflection-safety walk so an
+over-budget subtree is never inspected; dynamic limit configuration falls back
+to the contained post-inspection checks:
 
 - at most 100,000 unique JSON arrays and records, counting the root and each
   acyclic shared identity once;
@@ -978,8 +980,14 @@ must pass and 100,001 must fail; scalars spend zero, a root container spends
 one, and repeated references spend one by identity. An over-limit declaration
 must produce `SEIP_PROTOCOL_RESOURCE_LIMIT` before cloning, while the direct
 `validateProtocolSchema` API remains unchanged when no limits are supplied.
-Invalid proxies, accessors, cycles, and scalar values retain precedence over
-resource issues, including invalid data discovered after the count saturates.
+Invalid proxies, accessors, cycles, and scalar values retain precedence while
+they are within a trusted container and depth budget. At the first unseen
+container beyond a trusted container cap, or the first occurrence beyond a
+trusted depth cap, preflight returns a pathless resource issue before inspecting
+that subtree; the container cap takes precedence when both limits are crossed.
+Accessor-, proxy-, inherited-, or otherwise invalid limit fields are not used as
+early hints. The final depth pass remains authoritative for shared DAGs reached
+at multiple depths, and ordinary collection limits retain their pathful result.
 
 - [ ] **Step 6: Run focused and complete tests**
 
@@ -994,8 +1002,10 @@ Expected: all tests pass and arbitrary invalid values do not throw.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-07-11-production-v1-design.md docs/superpowers/plans/2026-07-11-production-v1-phase-1-core.md src/core/declaration.ts src/core/json-data.ts test/v1/protocol-boundary.test.mjs
-git commit -m "fix: bound accepted json validation memory"
+git add docs/superpowers/specs/2026-07-11-production-v1-design.md \
+  docs/superpowers/plans/2026-07-11-production-v1-phase-1-core.md \
+  src/core/json-data.ts test/v1/protocol-boundary.test.mjs
+git commit -m "fix: enforce json limits during inspection"
 ```
 
 ## Task 6: Implement the Immutable Lifecycle and Amendment Revisions
