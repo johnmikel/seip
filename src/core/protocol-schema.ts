@@ -175,16 +175,17 @@ function isCredentialArtifactQuerySegment(segment: string): boolean {
 }
 
 function artifactQueryNameSegments(name: string): string[] {
-  const bracketIndex = name.indexOf("[");
-  if (bracketIndex < 0) return [name];
+  const normalizedName = name.normalize("NFKC");
+  const bracketIndex = normalizedName.indexOf("[");
+  if (bracketIndex < 0) return [normalizedName];
 
-  const segments = [name.slice(0, bracketIndex)];
+  const segments = [normalizedName.slice(0, bracketIndex)];
   const bracketSegment = /\[([^\[\]]*)\]/g;
   bracketSegment.lastIndex = bracketIndex;
   for (
-    let match = bracketSegment.exec(name);
+    let match = bracketSegment.exec(normalizedName);
     match !== null;
-    match = bracketSegment.exec(name)
+    match = bracketSegment.exec(normalizedName)
   ) {
     const segment = match[1];
     if (

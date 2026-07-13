@@ -347,6 +347,13 @@ test("rejects a team repeated across amendment add and update", () => {
 
 test("rejects normalized cloud signatures and bracketed credential keys", async () => {
   const declaration = await loadFixture("valid/extended-declaration.json");
+  const fullwidthCredentialKeys = [
+    "ｔｏｋｅｎ［０］",
+    "sig［0］",
+    "X-Goog-Credential［0］",
+    "credentials［ｔｏｋｅｎ］",
+    "foo［ｔｏｋｅｎ］［０］",
+  ];
   const credentialKeys = [
     "sig",
     "X-Goog-Credential",
@@ -360,6 +367,7 @@ test("rejects normalized cloud signatures and bracketed credential keys", async 
     "foo[token][0]",
     "foo[ｔｏｋｅｎ]",
     "ｔｏｋｅｎ",
+    ...fullwidthCredentialKeys,
   ];
 
   for (const key of credentialKeys) {
@@ -367,6 +375,11 @@ test("rejects normalized cloud signatures and bracketed credential keys", async 
     const artifactUri = new URL("https://example.com/report");
     artifactUri.searchParams.set(key, "secret");
     candidate.evidence[0].artifact.uri = artifactUri.href;
+    assert.deepEqual(
+      [...new URL(artifactUri.href).searchParams.keys()],
+      [key],
+      `${key}: URLSearchParams decoded query name`,
+    );
     const result = validateProtocolSchema(candidate);
     assertCredentialQueryRejected(result, key);
   }
@@ -377,6 +390,9 @@ test("rejects normalized cloud signatures and bracketed credential keys", async 
     "X-Goog-Credential%5B0%5D=secret",
     "credentials%5Btoken%5D=secret",
     "foo%5Btoken%5D%5B0%5D=secret",
+    ...fullwidthCredentialKeys.map(
+      (key) => `${encodeURIComponent(key)}=secret`,
+    ),
   ]) {
     const candidate = structuredClone(declaration);
     candidate.evidence[0].artifact.uri =
@@ -387,11 +403,22 @@ test("rejects normalized cloud signatures and bracketed credential keys", async 
     );
   }
 
-  for (const key of ["filter[name]", "page[0]"]) {
+  const benignBracketKeys = [
+    "filter[name]",
+    "page[0]",
+    "filter［name］",
+    "page［０］",
+  ];
+  for (const key of benignBracketKeys) {
     const candidate = structuredClone(declaration);
     const artifactUri = new URL("https://example.com/report");
     artifactUri.searchParams.set(key, "benign");
     candidate.evidence[0].artifact.uri = artifactUri.href;
+    assert.deepEqual(
+      [...new URL(artifactUri.href).searchParams.keys()],
+      [key],
+      `${key}: URLSearchParams decoded benign query name`,
+    );
     assert.equal(validateProtocolSchema(candidate).ok, true, key);
   }
 
@@ -403,6 +430,9 @@ test("rejects normalized cloud signatures and bracketed credential keys", async 
     "page%5B0%5D=next",
     "filter%5Bname%5D=active#token=fragment-only",
     "safe=value#sig=fragment-only",
+    ...benignBracketKeys
+      .slice(2)
+      .map((key) => `${encodeURIComponent(key)}=benign`),
   ]) {
     const candidate = structuredClone(declaration);
     candidate.evidence[0].artifact.uri =
