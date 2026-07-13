@@ -75,7 +75,7 @@ The schema and generated TypeScript must express these contracts exactly. Do not
 
 ### Normalized changes
 
-`target.path` is the tagged path-segment array from the approved design. `before` and `after` are normalized snapshot records containing no bare numbers; arbitrary source values use `CanonicalValue`.
+`target.path` is the tagged path-segment array from the approved design. `before` and `after` are normalized snapshot values containing no bare numbers; arbitrary source values use `CanonicalValue`.
 
 Standard `kind` values and required snapshots are:
 
@@ -848,8 +848,8 @@ export interface NormalizedChange {
   target: { object: string; path: PathSegment[] };
   kind: string;
   compatibility: "compatible" | "breaking" | "unknown";
-  before?: Record<string, NormalizedSnapshotValue>;
-  after?: Record<string, NormalizedSnapshotValue>;
+  before?: NormalizedSnapshotValue;
+  after?: NormalizedSnapshotValue;
 }
 ```
 
