@@ -888,6 +888,8 @@ git commit -m "feat: add exact v1 change fingerprints"
 - Create: `test/v1/declaration.test.mjs`
 - Add: `test/fixtures/v1/invalid/*.json`
 - Modify: `src/core/index.ts`
+- Modify: `src/core/json-data.ts`
+- Modify: `test/v1/protocol-boundary.test.mjs`
 
 - [ ] **Step 1: Write failing total-validation tests**
 
@@ -958,21 +960,42 @@ export function createDeclaration(
 
 `CreateDeclarationInput.actor` is required input-only effect data: construction consumes it as the `CREATED` event actor and neither persists it at declaration root nor infers it from producer metadata. Construction sets revision `1`, status `DRAFT`, empty response/evidence arrays, a single `CREATED` event, and sorted changes. It preserves every schema-allowed unknown field supplied at any extensible input record, including but not limited to `x_*`, and validates the completed value before returning success.
 
-- [ ] **Step 5: Run focused and complete tests**
+- [ ] **Step 5: Bound validated declaration resources before expensive work**
+
+The declaration preflight must enforce these v1 defaults after completing
+reflection-safety validation and before depth, byte, shared-expansion, schema,
+semantic, or clone work:
+
+- at most 100,000 unique JSON arrays and records, counting the root and each
+  acyclic shared identity once;
+- at most 128 levels of JSON container depth;
+- at most 2 MiB of compact logical JSON; and
+- at most 10,000 entries in `changes`.
+
+`JsonDataLimits.maxContainers` is configurable for generic preflight callers
+and reports `resource: "containers"` with no path. Exactly 100,000 containers
+must pass and 100,001 must fail; scalars spend zero, a root container spends
+one, and repeated references spend one by identity. An over-limit declaration
+must produce `SEIP_PROTOCOL_RESOURCE_LIMIT` before cloning, while the direct
+`validateProtocolSchema` API remains unchanged when no limits are supplied.
+Invalid proxies, accessors, cycles, and scalar values retain precedence over
+resource issues, including invalid data discovered after the count saturates.
+
+- [ ] **Step 6: Run focused and complete tests**
 
 ```bash
 npm run build
-node --test test/v1/declaration.test.mjs
+node --test test/v1/declaration.test.mjs test/v1/protocol-boundary.test.mjs
 npm test
 ```
 
 Expected: all tests pass and arbitrary invalid values do not throw.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/core/declaration.ts src/core/index.ts test/v1/declaration.test.mjs test/fixtures/v1/invalid
-git commit -m "feat: validate and construct v1 declarations"
+git add docs/superpowers/specs/2026-07-11-production-v1-design.md docs/superpowers/plans/2026-07-11-production-v1-phase-1-core.md src/core/declaration.ts src/core/json-data.ts test/v1/protocol-boundary.test.mjs
+git commit -m "fix: bound accepted json validation memory"
 ```
 
 ## Task 6: Implement the Immutable Lifecycle and Amendment Revisions

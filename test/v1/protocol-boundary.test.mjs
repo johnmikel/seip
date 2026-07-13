@@ -18,6 +18,11 @@ const jsonDataModuleUrl = new URL(
   "../../dist/core/json-data.js",
   import.meta.url,
 ).href;
+const coreModuleUrl = new URL("../../dist/core/index.js", import.meta.url).href;
+const minimalDeclarationUrl = new URL(
+  "valid/minimal-declaration.json",
+  fixtures,
+).href;
 
 async function loadFixture(path) {
   return JSON.parse(await readFile(new URL(path, fixtures), "utf8"));
@@ -357,6 +362,278 @@ test("bounds validity-walk memory for a wide JSON array", () => {
   );
 });
 
+test("bounds accepted-path memory for a near-limit scalar array", () => {
+  const probe = runWideJsonProbe(`
+    preflightJsonData([null], { maxBytes: 1 });
+    globalThis.keepAlive = Array(419_430).fill(null);
+    const bytes = 5 * globalThis.keepAlive.length + 1;
+    for (let index = 0; index < 3; index += 1) globalThis.gc();
+    const before = process.memoryUsage();
+    const beforeMaxRss = process.resourceUsage().maxRSS;
+    const result = preflightJsonData(globalThis.keepAlive, {
+      maxBytes: 2 * 1024 * 1024,
+    });
+    const after = process.memoryUsage();
+    const afterMaxRss = process.resourceUsage().maxRSS;
+    process.stdout.write(JSON.stringify({
+      bytes,
+      ok: result.ok,
+      isolated: result.ok && result.value !== globalThis.keepAlive,
+      length: result.ok && result.value.length,
+      first: result.ok && result.value[0],
+      last: result.ok && result.value[result.value.length - 1],
+      heapDelta: Math.max(0, after.heapUsed - before.heapUsed),
+      rssDelta: Math.max(
+        0,
+        after.rss - before.rss,
+        (afterMaxRss - beforeMaxRss) * 1024,
+      ),
+    }));
+  `);
+
+  assert.equal(probe.bytes, 2_097_151);
+  assert.equal(probe.ok, true);
+  assert.equal(probe.isolated, true);
+  assert.equal(probe.length, 419_430);
+  assert.equal(probe.first, null);
+  assert.equal(probe.last, null);
+  assert.ok(
+    probe.heapDelta < 80 * 1024 * 1024 &&
+      probe.rssDelta < 144 * 1024 * 1024,
+    `accepted scalar array used ${probe.heapDelta} heap bytes and ${probe.rssDelta} RSS bytes`,
+  );
+});
+
+test("counts unique JSON containers at exact configurable limits", () => {
+  assert.equal(preflightJsonData(null, { maxContainers: 0 }).ok, true);
+  assertResourceIssue(preflightJsonData({}, { maxContainers: 0 }), "containers");
+  assert.equal(preflightJsonData({}, { maxContainers: 1 }).ok, true);
+
+  const atLimit = Array.from({ length: 99_999 }, () => ({}));
+  const accepted = preflightJsonData(atLimit, { maxContainers: 100_000 });
+  assert.equal(accepted.ok, true);
+  if (accepted.ok) {
+    assert.notEqual(accepted.value, atLimit);
+    assert.notEqual(accepted.value[0], atLimit[0]);
+    assert.equal(Object.getPrototypeOf(accepted.value[0]), null);
+  }
+
+  assert.deepEqual(
+    preflightJsonData(Array.from({ length: 100_000 }, () => ({})), {
+      maxContainers: 100_000,
+    }),
+    {
+      ok: false,
+      issue: {
+        kind: "resource_limit",
+        message: "exceeds JSON resource limits",
+        resource: "containers",
+      },
+    },
+  );
+
+  const shared = {};
+  const aliases = Array(4).fill(shared);
+  const sharedResult = preflightJsonData(aliases, { maxContainers: 2 });
+  assert.equal(sharedResult.ok, true);
+  if (sharedResult.ok) {
+    assert.notEqual(sharedResult.value[0], shared);
+    assert.equal(sharedResult.value[0], sharedResult.value.at(-1));
+  }
+
+  for (const invalidLimit of [-1, 0.5, Number.MAX_SAFE_INTEGER]) {
+    assert.deepEqual(preflightJsonData(null, { maxContainers: invalidLimit }), {
+      ok: false,
+      issue: { message: "must be JSON data" },
+    });
+  }
+});
+
+test("snapshots maxContainers without changing invalid-data precedence", () => {
+  let changingReads = 0;
+  const changingLimit = {
+    get maxContainers() {
+      changingReads += 1;
+      return changingReads === 1 ? 0 : 1;
+    },
+  };
+  assertResourceIssue(
+    preflightJsonData([{}, {}], changingLimit),
+    "containers",
+  );
+  assert.equal(changingReads, 1);
+
+  let collectionReads = 0;
+  const mutatingCollectionLimit = {
+    maxContainers: 0,
+    get arrayLengthLimits() {
+      collectionReads += 1;
+      this.maxContainers = 1;
+      return [];
+    },
+  };
+  assertResourceIssue(
+    preflightJsonData([{}, {}], mutatingCollectionLimit),
+    "containers",
+  );
+  assert.equal(collectionReads, 1);
+
+  let throwingReads = 0;
+  const throwingLimit = {
+    get maxContainers() {
+      throwingReads += 1;
+      throw new Error("must remain inside preflight");
+    },
+  };
+  assert.deepEqual(preflightJsonData(null, throwingLimit), {
+    ok: false,
+    issue: { message: "must be JSON data" },
+  });
+  assert.equal(throwingReads, 1);
+
+  throwingReads = 0;
+  assert.deepEqual(preflightJsonData({ invalid: undefined }, throwingLimit), {
+    ok: false,
+    issue: { message: "must be JSON data", path: "/invalid" },
+  });
+  assert.equal(throwingReads, 0);
+
+  let proxyReads = 0;
+  const proxyLimits = new Proxy(
+    {},
+    {
+      get() {
+        proxyReads += 1;
+        throw new Error("must remain inside preflight");
+      },
+    },
+  );
+  assert.deepEqual(preflightJsonData({ invalid: undefined }, proxyLimits), {
+    ok: false,
+    issue: { message: "must be JSON data", path: "/invalid" },
+  });
+  assert.equal(proxyReads, 0);
+  assert.deepEqual(preflightJsonData(null, proxyLimits), {
+    ok: false,
+    issue: { message: "must be JSON data" },
+  });
+  assert.equal(proxyReads, 1);
+});
+
+test("bounds accepted-path memory for a valid near-limit declaration", () => {
+  const probe = runWideJsonProbe(`
+    const { readFile } = await import("node:fs/promises");
+    const { computeChangeId, validateDeclaration } = await import(
+      ${JSON.stringify(coreModuleUrl)}
+    );
+    const source = await readFile(
+      new URL(${JSON.stringify(minimalDeclarationUrl)}),
+      "utf8",
+    );
+    const prepareDeclaration = () => {
+      const declaration = JSON.parse(source);
+      const changeId = computeChangeId(declaration.changes[0]);
+      if (!changeId.ok) throw new Error("fixture change could not be fingerprinted");
+      declaration.changes[0].change_id = changeId.value;
+      return declaration;
+    };
+    validateDeclaration(prepareDeclaration());
+    globalThis.keepAlive = prepareDeclaration();
+    globalThis.keepAlive.memory_extension = Array(419_216).fill(null);
+    const bytes = Buffer.byteLength(JSON.stringify(globalThis.keepAlive), "utf8");
+    for (let index = 0; index < 3; index += 1) globalThis.gc();
+    const before = process.memoryUsage();
+    const beforeMaxRss = process.resourceUsage().maxRSS;
+    const result = validateDeclaration(globalThis.keepAlive);
+    const after = process.memoryUsage();
+    const afterMaxRss = process.resourceUsage().maxRSS;
+    process.stdout.write(JSON.stringify({
+      bytes,
+      ok: result.ok,
+      isolated: result.ok && result.value !== globalThis.keepAlive,
+      extensionIsolated:
+        result.ok &&
+        result.value.memory_extension !== globalThis.keepAlive.memory_extension,
+      extensionLength: result.ok && result.value.memory_extension.length,
+      heapDelta: Math.max(0, after.heapUsed - before.heapUsed),
+      rssDelta: Math.max(
+        0,
+        after.rss - before.rss,
+        (afterMaxRss - beforeMaxRss) * 1024,
+      ),
+    }));
+  `);
+
+  assert.equal(probe.bytes, 2_097_151);
+  assert.equal(probe.ok, true);
+  assert.equal(probe.isolated, true);
+  assert.equal(probe.extensionIsolated, true);
+  assert.equal(probe.extensionLength, 419_216);
+  assert.ok(
+    probe.heapDelta < 80 * 1024 * 1024 &&
+      probe.rssDelta < 144 * 1024 * 1024,
+    `accepted declaration used ${probe.heapDelta} heap bytes and ${probe.rssDelta} RSS bytes`,
+  );
+});
+
+test("bounds container-limit rejection for a pathological declaration", () => {
+  const probe = runWideJsonProbe(`
+    const { readFile } = await import("node:fs/promises");
+    const { computeChangeId, validateDeclaration } = await import(
+      ${JSON.stringify(coreModuleUrl)}
+    );
+    const declaration = JSON.parse(await readFile(
+      new URL(${JSON.stringify(minimalDeclarationUrl)}),
+      "utf8",
+    ));
+    const changeId = computeChangeId(declaration.changes[0]);
+    if (!changeId.ok) throw new Error("fixture change could not be fingerprinted");
+    declaration.changes[0].change_id = changeId.value;
+    validateDeclaration(declaration);
+    globalThis.keepAlive = declaration;
+    globalThis.keepAlive.container_extension = Array.from(
+      { length: 699_050 },
+      () => ({}),
+    );
+    for (let index = 0; index < 3; index += 1) globalThis.gc();
+    const before = process.memoryUsage();
+    const beforeMaxRss = process.resourceUsage().maxRSS;
+    const result = validateDeclaration(globalThis.keepAlive);
+    const after = process.memoryUsage();
+    const afterMaxRss = process.resourceUsage().maxRSS;
+    process.stdout.write(JSON.stringify({
+      ok: result.ok,
+      diagnostics: result.diagnostics,
+      extensionLength: globalThis.keepAlive.container_extension.length,
+      inputChildPrototypeIsObject:
+        Object.getPrototypeOf(globalThis.keepAlive.container_extension[0]) ===
+        Object.prototype,
+      heapDelta: Math.max(0, after.heapUsed - before.heapUsed),
+      rssDelta: Math.max(
+        0,
+        after.rss - before.rss,
+        (afterMaxRss - beforeMaxRss) * 1024,
+      ),
+    }));
+  `);
+
+  assert.equal(probe.ok, false);
+  assert.deepEqual(probe.diagnostics, [
+    {
+      code: "SEIP_PROTOCOL_RESOURCE_LIMIT",
+      severity: "error",
+      message: "Declaration exceeds configured protocol resource limits.",
+    },
+  ]);
+  assert.equal(probe.extensionLength, 699_050);
+  assert.equal(probe.inputChildPrototypeIsObject, true);
+  assert.ok(
+    probe.heapDelta < 144 * 1024 * 1024 &&
+      probe.rssDelta < 256 * 1024 * 1024,
+    `container-limit rejection used ${probe.heapDelta} heap bytes and ${probe.rssDelta} RSS bytes`,
+  );
+});
+
 test("reports a late wide-array accessor before a tiny resource limit", () => {
   const probe = runWideJsonProbe(`
     const value = Array(419_431).fill(null);
@@ -370,7 +647,7 @@ test("reports a late wide-array accessor before a tiny resource limit", () => {
         return null;
       },
     });
-    const result = preflightJsonData(value, { maxBytes: 1 });
+    const result = preflightJsonData(value, { maxBytes: 1, maxContainers: 0 });
     process.stdout.write(JSON.stringify({ getterInvoked, result }));
   `);
 
@@ -392,13 +669,65 @@ test("validates hostile descriptors before applying resource limits", () => {
     },
   });
 
-  const result = preflightJsonData(accessor, { maxBytes: 1, maxDepth: 1 });
+  const result = preflightJsonData(accessor, {
+    maxBytes: 1,
+    maxContainers: 0,
+    maxDepth: 1,
+  });
 
   assert.deepEqual(result, {
     ok: false,
     issue: { message: "must be JSON data", path: "/payload" },
   });
   assert.equal(getterInvoked, false);
+});
+
+test("preserves invalid-data precedence after container saturation", () => {
+  const nonfinite = { value: Number.POSITIVE_INFINITY };
+  assert.deepEqual(
+    preflightJsonData([{}, nonfinite], { maxContainers: 0 }),
+    {
+      ok: false,
+      issue: { message: "must be JSON data", path: "/1/value" },
+    },
+  );
+
+  const cyclic = {};
+  cyclic.self = cyclic;
+  assert.deepEqual(
+    preflightJsonData([{}, cyclic], { maxContainers: 0 }),
+    {
+      ok: false,
+      issue: { message: "must be JSON data", path: "/1/self" },
+    },
+  );
+
+  let getterInvoked = false;
+  const accessor = {};
+  Object.defineProperty(accessor, "payload", {
+    enumerable: true,
+    get() {
+      getterInvoked = true;
+      throw new Error("must not execute");
+    },
+  });
+  assert.deepEqual(
+    preflightJsonData([{}, accessor], { maxContainers: 0 }),
+    {
+      ok: false,
+      issue: { message: "must be JSON data", path: "/1/payload" },
+    },
+  );
+  assert.equal(getterInvoked, false);
+
+  const sharedScalarLeaf = { value: null };
+  assertResourceIssue(
+    preflightJsonData(
+      [{}, sharedScalarLeaf, sharedScalarLeaf, sharedScalarLeaf],
+      { maxContainers: 0 },
+    ),
+    "containers",
+  );
 });
 
 test("bounds declaration depth and logical size without changing direct schema validation", async () => {
@@ -431,6 +760,17 @@ test("bounds declaration depth and logical size without changing direct schema v
   const overSize = structuredClone(atSize);
   overSize.size_extension += "a";
   assertDeclarationResourceFailure(validateDeclaration(overSize));
+
+  const overContainers = structuredClone(declaration);
+  overContainers.container_extension = Array.from(
+    { length: 100_000 },
+    () => ({}),
+  );
+  assertDeclarationResourceFailure(validateDeclaration(overContainers));
+  assert.deepEqual(validateProtocolSchema(overContainers), {
+    ok: true,
+    diagnostics: [],
+  });
 });
 
 test("short-circuits oversized change collections as resources", async () => {

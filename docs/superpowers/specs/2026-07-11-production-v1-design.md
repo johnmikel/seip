@@ -662,7 +662,7 @@ The threat model treats schema files, declarations, Action inputs, external dete
 
 Required controls include:
 
-- file-size, nesting-depth, and change-count limits with documented defaults;
+- file-size, unique-container-count, nesting-depth, and change-count limits with documented defaults;
 - no implicit remote reference or network resolution;
 - safe path construction and containment checks;
 - no shell execution for user-supplied command strings;
@@ -679,6 +679,7 @@ Default resource limits are part of v1 behavior and may be lowered by trusted co
 | --- | --- |
 | Each before/after schema file | 10 MiB |
 | Each declaration, config, or imported change-set file | 2 MiB |
+| Unique JSON arrays and records per declaration or creation payload | 100,000 by identity |
 | Parsed JSON nesting depth | 128 |
 | Normalized changes per invocation | 10,000 |
 | Declarations discovered per repository | 5,000 |
@@ -688,7 +689,7 @@ Default resource limits are part of v1 behavior and may be lowered by trusted co
 | Slack delivery runtime | 10 seconds |
 | Slack error response read | 64 KiB |
 
-Limit violations are operational errors. Parsers must enforce depth and count limits during or immediately after parsing, before recursive normalization or policy evaluation.
+Limit violations are operational errors. Parsers must enforce depth and count limits during or immediately after parsing, before recursive normalization or policy evaluation. Declaration validation counts the root and each unique array or record once by JavaScript identity; repeated acyclic references do not spend the container budget again. Reflection-safety validation still completes first so proxies, accessors, cycles, and invalid scalar values retain diagnostic precedence.
 
 Webhook URLs are never copied into result context; delivery targets are reported only as `slack-webhook`. Raw child output is neither persisted nor returned by default. Error messages expose exit status, timeout, and output digests, not captured content. Verbose local display, if implemented, is opt-in and passes through redaction.
 

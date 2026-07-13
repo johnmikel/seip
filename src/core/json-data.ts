@@ -9,7 +9,12 @@ export interface JsonDataResourceLimitIssue {
   kind: "resource_limit";
   message: "exceeds JSON resource limits";
   path?: string;
-  resource: "bytes" | "collection" | "depth" | "shared_expansion";
+  resource:
+    | "bytes"
+    | "collection"
+    | "containers"
+    | "depth"
+    | "shared_expansion";
 }
 
 export type JsonDataIssue =
@@ -22,6 +27,7 @@ export interface JsonDataLimits {
     maxLength: number;
   }[];
   maxBytes?: number;
+  maxContainers?: number;
   maxDepth?: number;
 }
 
@@ -44,6 +50,11 @@ interface ContainerFrame {
 }
 
 type Frame = ContainerFrame | VisitFrame;
+
+interface JsonDataInspection {
+  containerCount: number;
+  issue?: InvalidJsonDataIssue;
+}
 
 const invalidJsonMessage = "must be JSON data" as const;
 const resourceLimitMessage = "exceeds JSON resource limits" as const;
@@ -80,6 +91,37 @@ function resourceIssue(
   return result;
 }
 
+function ownDataMaxContainersHint(
+  limits: JsonDataLimits | undefined,
+): number | undefined {
+  if (
+    limits === undefined ||
+    (typeof limits !== "object" && typeof limits !== "function") ||
+    limits === null ||
+    isProxy(limits)
+  ) {
+    return undefined;
+  }
+
+  try {
+    const descriptor = Reflect.getOwnPropertyDescriptor(
+      limits,
+      "maxContainers",
+    );
+    if (descriptor === undefined || !("value" in descriptor)) {
+      return undefined;
+    }
+    const configured = descriptor.value;
+    return Number.isSafeInteger(configured) &&
+      configured >= 0 &&
+      configured < Number.MAX_SAFE_INTEGER
+      ? configured
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function arrayIndex(key: string): number | undefined {
   if (key === "0") return 0;
   if (!/^[1-9][0-9]*$/.test(key)) return undefined;
@@ -91,13 +133,23 @@ function arrayIndex(key: string): number | undefined {
 }
 
 /**
- * Checks the JavaScript value model before schema validation without invoking
- * user code. Shared acyclic references are valid; back-edges are not.
+ * Inspects the JavaScript value model before schema validation without
+ * invoking user code. Shared acyclic references are valid; back-edges are not.
+ * A valid container-limit hint bounds completed empty-container identity state
+ * after the result is already known to exceed that limit.
  */
-function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
+function inspectJsonData(
+  value: unknown,
+  maxContainersHint?: number,
+): JsonDataInspection {
   const state = new WeakMap<object, "visiting" | "visited">();
   const frames: Frame[] = [{ kind: "visit", value }];
+  let containerCount = 0;
   let activePath: string | undefined;
+  const invalid = (path?: string): JsonDataInspection => ({
+    containerCount,
+    issue: issue(path),
+  });
 
   try {
     while (frames.length > 0) {
@@ -124,7 +176,7 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
             descriptor.enumerable !== true ||
             !("value" in descriptor)
           ) {
-            return issue(appendPath(frame.path, key));
+            return invalid(appendPath(frame.path, key));
           }
 
           const child = descriptor.value;
@@ -137,12 +189,12 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
           }
           if (typeof child === "number") {
             if (!Number.isFinite(child)) {
-              return issue(appendPath(frame.path, key));
+              return invalid(appendPath(frame.path, key));
             }
             continue;
           }
           if (typeof child !== "object") {
-            return issue(appendPath(frame.path, key));
+            return invalid(appendPath(frame.path, key));
           }
 
           const childPath = appendPath(frame.path, key);
@@ -154,7 +206,16 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
           scheduledChild = true;
           break;
         }
-        if (!scheduledChild) state.set(frame.value, "visited");
+        if (!scheduledChild) {
+          const saturated =
+            maxContainersHint !== undefined &&
+            containerCount > maxContainersHint;
+          if (saturated && length === 0) {
+            state.delete(frame.value);
+          } else {
+            state.set(frame.value, "visited");
+          }
+        }
         continue;
       }
 
@@ -167,19 +228,19 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
         continue;
       }
       if (typeof current === "number") {
-        if (!Number.isFinite(current)) return issue(path);
+        if (!Number.isFinite(current)) return invalid(path);
         continue;
       }
-      if (typeof current !== "object") return issue(path);
-      if (isProxy(current)) return issue(path);
+      if (typeof current !== "object") return invalid(path);
+      if (isProxy(current)) return invalid(path);
 
       const currentState = state.get(current);
-      if (currentState === "visiting") return issue(path);
+      if (currentState === "visiting") return invalid(path);
       if (currentState === "visited") continue;
 
       if (Array.isArray(current)) {
         if (Object.getPrototypeOf(current) !== Array.prototype) {
-          return issue(path);
+          return invalid(path);
         }
 
         const keys = Reflect.ownKeys(current);
@@ -199,16 +260,16 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
             }
           }
         }
-        if (hasSymbol) return issue(path);
+        if (hasSymbol) return invalid(path);
         if (firstExtraKey !== undefined) {
-          return issue(appendPath(path, firstExtraKey));
+          return invalid(appendPath(path, firstExtraKey));
         }
 
         let expectedIndex = 0;
         for (const key of keys) {
           if (typeof key !== "string" || key === "length") continue;
           if (Number(key) !== expectedIndex) {
-            return issue(appendPath(path, String(expectedIndex)));
+            return invalid(appendPath(path, String(expectedIndex)));
           }
 
           const descriptor = Reflect.getOwnPropertyDescriptor(current, key);
@@ -217,14 +278,20 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
             descriptor.enumerable !== true ||
             !("value" in descriptor)
           ) {
-            return issue(appendPath(path, key));
+            return invalid(appendPath(path, key));
           }
           expectedIndex += 1;
         }
         if (expectedIndex !== current.length) {
-          return issue(appendPath(path, String(expectedIndex)));
+          return invalid(appendPath(path, String(expectedIndex)));
         }
 
+        if (
+          maxContainersHint === undefined ||
+          containerCount <= maxContainersHint
+        ) {
+          containerCount += 1;
+        }
         state.set(current, "visiting");
         frames.push({
           index: 0,
@@ -235,11 +302,11 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
       } else {
         const prototype = Object.getPrototypeOf(current);
         if (prototype !== Object.prototype && prototype !== null) {
-          return issue(path);
+          return invalid(path);
         }
 
         const keys = Reflect.ownKeys(current);
-        if (keys.some((key) => typeof key === "symbol")) return issue(path);
+        if (keys.some((key) => typeof key === "symbol")) return invalid(path);
         const stringKeys = (keys as string[]).sort();
         for (const key of stringKeys) {
           const descriptor = Reflect.getOwnPropertyDescriptor(current, key);
@@ -248,10 +315,16 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
             descriptor.enumerable !== true ||
             !("value" in descriptor)
           ) {
-            return issue(appendPath(path, key));
+            return invalid(appendPath(path, key));
           }
         }
 
+        if (
+          maxContainersHint === undefined ||
+          containerCount <= maxContainersHint
+        ) {
+          containerCount += 1;
+        }
         state.set(current, "visiting");
         frames.push({
           index: 0,
@@ -263,17 +336,40 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
       }
     }
   } catch {
-    return issue(activePath);
+    return invalid(activePath);
   }
 
-  return undefined;
+  return { containerCount };
 }
 
 type JsonContainer = unknown[] | Record<string, unknown>;
 
+interface ChildCursor {
+  container: object;
+  index: number;
+  keys?: readonly PropertyKey[];
+}
+
 interface CloneFrame {
+  index: number;
+  keys?: readonly string[];
   source: object;
   target: JsonContainer;
+}
+
+interface DepthFrame {
+  cursor: ChildCursor;
+  depth: number;
+}
+
+interface MetricFrame {
+  cursor: ChildCursor;
+}
+
+interface ExpansionFrame {
+  cursor: ChildCursor;
+  pendingChild?: object;
+  visits: number;
 }
 
 function createSanitizedContainer(source: object): JsonContainer {
@@ -282,39 +378,45 @@ function createSanitizedContainer(source: object): JsonContainer {
     : (Object.create(null) as Record<string, unknown>);
 }
 
-function jsonContainerKeys(container: object): string[] {
-  return Array.isArray(container)
-    ? Array.from({ length: container.length }, (_, index) => String(index))
-    : (Reflect.ownKeys(container) as string[]).sort();
+function jsonRecordKeys(container: object): string[] {
+  return (Reflect.ownKeys(container) as string[]).sort();
 }
 
-function jsonContainerChildren(container: object): object[] {
-  const children: object[] = [];
-  // Native own-key order is deterministic. Avoid sorting here so estimation
-  // remains linear in the unique container graph; cloning retains sorted keys.
-  for (const key of Reflect.ownKeys(container)) {
-    const descriptor = Reflect.getOwnPropertyDescriptor(container, key);
+function createChildCursor(container: object): ChildCursor {
+  return Array.isArray(container)
+    ? { container, index: 0 }
+    : { container, index: 0, keys: Reflect.ownKeys(container) };
+}
+
+function nextObjectChild(cursor: ChildCursor): object | undefined {
+  const length =
+    cursor.keys === undefined
+      ? (cursor.container as unknown[]).length
+      : cursor.keys.length;
+  while (cursor.index < length) {
+    const key =
+      cursor.keys === undefined
+        ? String(cursor.index)
+        : cursor.keys[cursor.index];
+    cursor.index += 1;
+    if (key === undefined) continue;
+
+    const descriptor = Reflect.getOwnPropertyDescriptor(cursor.container, key);
     if (descriptor === undefined || !("value" in descriptor)) {
       throw new Error("validated JSON data changed during work estimation");
     }
     if (typeof descriptor.value === "object" && descriptor.value !== null) {
-      children.push(descriptor.value);
+      return descriptor.value;
     }
   }
-  return children;
+  return undefined;
 }
 
-interface MetricVisitFrame {
-  kind: "visit";
-  value: object;
+function createCloneFrame(source: object, target: JsonContainer): CloneFrame {
+  return Array.isArray(source)
+    ? { index: 0, source, target }
+    : { index: 0, keys: jsonRecordKeys(source), source, target };
 }
-
-interface MetricCompleteFrame {
-  kind: "complete";
-  value: object;
-}
-
-type MetricFrame = MetricVisitFrame | MetricCompleteFrame;
 
 function validateLimit(value: number): void {
   if (
@@ -391,20 +493,27 @@ function jsonScalarBytes(value: unknown, limit: number): number {
 
 function exceedsDepthLimit(value: unknown, maxDepth: number): boolean {
   if (typeof value !== "object" || value === null) return false;
+  if (maxDepth < 1) return true;
 
   const deepestVisits = new WeakMap<object, number>();
-  const pending = [{ value, depth: 1 }];
-  while (pending.length > 0) {
-    const current = pending.pop();
-    if (current === undefined) break;
-    if (current.depth > maxDepth) return true;
+  deepestVisits.set(value, 1);
+  const frames: DepthFrame[] = [
+    { cursor: createChildCursor(value), depth: 1 },
+  ];
+  while (frames.length > 0) {
+    const frame = frames.pop();
+    if (frame === undefined) break;
 
-    const previousDepth = deepestVisits.get(current.value);
-    if (previousDepth !== undefined && previousDepth >= current.depth) continue;
-    deepestVisits.set(current.value, current.depth);
-    for (const child of jsonContainerChildren(current.value)) {
-      pending.push({ value: child, depth: current.depth + 1 });
-    }
+    const child = nextObjectChild(frame.cursor);
+    if (child === undefined) continue;
+    frames.push(frame);
+
+    const childDepth = frame.depth + 1;
+    if (childDepth > maxDepth) return true;
+    const previousDepth = deepestVisits.get(child);
+    if (previousDepth !== undefined && previousDepth >= childDepth) continue;
+    deepestVisits.set(child, childDepth);
+    frames.push({ cursor: createChildCursor(child), depth: childDepth });
   }
   return false;
 }
@@ -438,7 +547,7 @@ function containerJsonBytes(
     return bytes;
   }
 
-  const keys = jsonContainerKeys(container);
+  const keys = jsonRecordKeys(container);
   for (let index = 0; index < keys.length; index += 1) {
     const key = keys[index];
     if (key === undefined) continue;
@@ -473,29 +582,27 @@ function exceedsByteLimit(value: unknown, maxBytes: number): boolean {
 
   const sizes = new WeakMap<object, number>();
   const active = new WeakSet<object>();
-  const frames: MetricFrame[] = [{ kind: "visit", value }];
+  active.add(value);
+  const frames: MetricFrame[] = [{ cursor: createChildCursor(value) }];
   while (frames.length > 0) {
     const frame = frames.pop();
     if (frame === undefined) break;
 
-    if (frame.kind === "complete") {
-      sizes.set(
-        frame.value,
-        containerJsonBytes(frame.value, sizes, maxBytes),
-      );
-      active.delete(frame.value);
+    const child = nextObjectChild(frame.cursor);
+    if (child !== undefined) {
+      frames.push(frame);
+      if (sizes.has(child)) continue;
+      if (active.has(child)) {
+        throw new Error("validated JSON data became cyclic during measurement");
+      }
+      active.add(child);
+      frames.push({ cursor: createChildCursor(child) });
       continue;
     }
-    if (sizes.has(frame.value)) continue;
-    if (active.has(frame.value)) {
-      throw new Error("validated JSON data became cyclic during measurement");
-    }
 
-    active.add(frame.value);
-    frames.push({ kind: "complete", value: frame.value });
-    for (const child of jsonContainerChildren(frame.value)) {
-      if (!sizes.has(child)) frames.push({ kind: "visit", value: child });
-    }
+    const container = frame.cursor.container;
+    sizes.set(container, containerJsonBytes(container, sizes, maxBytes));
+    active.delete(container);
   }
 
   return (sizes.get(value) ?? maxBytes + 1) > maxBytes;
@@ -504,7 +611,9 @@ function exceedsByteLimit(value: unknown, maxBytes: number): boolean {
 function findJsonResourceIssue(
   value: unknown,
   limits: JsonDataLimits,
+  containerCount: number,
 ): JsonDataResourceLimitIssue | undefined {
+  const maxContainers = limits.maxContainers;
   for (const limit of limits.arrayLengthLimits ?? []) {
     validateLimit(limit.maxLength);
     let current = value;
@@ -527,6 +636,12 @@ function findJsonResourceIssue(
       return resourceIssue("collection", path);
     }
   }
+  if (maxContainers !== undefined) {
+    validateLimit(maxContainers);
+    if (containerCount > maxContainers) {
+      return resourceIssue("containers");
+    }
+  }
   if (limits.maxDepth !== undefined) {
     validateLimit(limits.maxDepth);
     if (exceedsDepthLimit(value, limits.maxDepth)) {
@@ -542,69 +657,69 @@ function findJsonResourceIssue(
   return undefined;
 }
 
-// Build the unique identity graph once, then evaluate
-// visits(node) = 1 + sum(visits(child)) in reverse topological order. Parallel
-// edges remain in adjacency so sharing is counted without unfolding the DAG.
+// Evaluate visits(node) = 1 + sum(visits(child)) with a memoized cursor walk.
+// Parallel edges are encountered separately, preserving unfolded multiplicity
+// without retaining the whole identity graph or all siblings at once.
 function exceedsSharedExpansionBudget(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
 
-  const adjacency = new Map<object, object[]>();
-  const indegree = new Map<object, number>([[value, 0]]);
-  const seen = new WeakSet<object>();
-  const pending = [value];
-  const nodes: object[] = [];
+  const active = new WeakSet<object>();
+  const unfoldedVisits = new WeakMap<object, number>();
+  let uniqueContainerCount = 1;
+  active.add(value);
+  const frames: ExpansionFrame[] = [
+    { cursor: createChildCursor(value), visits: 1 },
+  ];
 
-  while (pending.length > 0) {
-    const container = pending.pop();
-    if (container === undefined || seen.has(container)) continue;
-    seen.add(container);
-    nodes.push(container);
+  while (frames.length > 0) {
+    const frame = frames.pop();
+    if (frame === undefined) break;
 
-    const children = jsonContainerChildren(container);
-    adjacency.set(container, children);
-    for (const child of children) {
-      indegree.set(child, (indegree.get(child) ?? 0) + 1);
-      if (!seen.has(child)) pending.push(child);
-    }
-  }
-
-  const topological: object[] = [];
-  const ready = nodes.filter((node) => indegree.get(node) === 0);
-  for (let index = 0; index < ready.length; index += 1) {
-    const container = ready[index];
-    if (container === undefined) continue;
-    topological.push(container);
-
-    for (const child of adjacency.get(container) ?? []) {
-      const remaining = (indegree.get(child) ?? 0) - 1;
-      indegree.set(child, remaining);
-      if (remaining === 0) ready.push(child);
-    }
-  }
-  if (topological.length !== nodes.length) return true;
-
-  const uniqueContainerCount = nodes.length;
-  const saturationLimit =
-    uniqueContainerCount + MAX_SHARED_EXPANSION_OVERHEAD + 1;
-  const unfoldedVisits = new Map<object, number>();
-  for (let index = topological.length - 1; index >= 0; index -= 1) {
-    const container = topological[index];
-    if (container === undefined) continue;
-
-    let visits = 1;
-    for (const child of adjacency.get(container) ?? []) {
-      const childVisits = unfoldedVisits.get(child);
+    if (frame.pendingChild !== undefined) {
+      const childVisits = unfoldedVisits.get(frame.pendingChild);
       if (childVisits === undefined) return true;
-      visits =
-        visits >= saturationLimit - childVisits
-          ? saturationLimit
-          : visits + childVisits;
+      frame.visits = saturatedAdd(
+        frame.visits,
+        childVisits,
+        Number.MAX_SAFE_INTEGER - 1,
+      );
+      delete frame.pendingChild;
     }
-    unfoldedVisits.set(container, visits);
+
+    let child = nextObjectChild(frame.cursor);
+    while (child !== undefined) {
+      const childVisits = unfoldedVisits.get(child);
+      if (childVisits !== undefined) {
+        frame.visits = saturatedAdd(
+          frame.visits,
+          childVisits,
+          Number.MAX_SAFE_INTEGER - 1,
+        );
+        child = nextObjectChild(frame.cursor);
+        continue;
+      }
+      if (active.has(child)) return true;
+
+      uniqueContainerCount += 1;
+      active.add(child);
+      frame.pendingChild = child;
+      frames.push(frame, {
+        cursor: createChildCursor(child),
+        visits: 1,
+      });
+      break;
+    }
+
+    if (child === undefined && frame.pendingChild === undefined) {
+      const container = frame.cursor.container;
+      unfoldedVisits.set(container, frame.visits);
+      active.delete(container);
+    }
   }
 
   return (
-    (unfoldedVisits.get(value) ?? saturationLimit) - uniqueContainerCount >
+    (unfoldedVisits.get(value) ?? Number.MAX_SAFE_INTEGER) -
+      uniqueContainerCount >
     MAX_SHARED_EXPANSION_OVERHEAD
   );
 }
@@ -614,41 +729,57 @@ function cloneJsonData(value: unknown): unknown {
 
   const clones = new WeakMap<object, JsonContainer>();
   const root = createSanitizedContainer(value);
-  const frames: CloneFrame[] = [{ source: value, target: root }];
+  const frames: CloneFrame[] = [createCloneFrame(value, root)];
   clones.set(value, root);
-
-  const cloneValue = (nestedValue: unknown): unknown => {
-    if (typeof nestedValue !== "object" || nestedValue === null) {
-      return nestedValue;
-    }
-
-    const existing = clones.get(nestedValue);
-    if (existing !== undefined) return existing;
-
-    const nestedClone = createSanitizedContainer(nestedValue);
-    clones.set(nestedValue, nestedClone);
-    frames.push({ source: nestedValue, target: nestedClone });
-    return nestedClone;
-  };
 
   while (frames.length > 0) {
     const frame = frames.pop();
     if (frame === undefined) break;
 
-    for (const key of jsonContainerKeys(frame.source)) {
+    const length =
+      frame.keys === undefined
+        ? (frame.source as unknown[]).length
+        : frame.keys.length;
+    while (frame.index < length) {
+      const key =
+        frame.keys === undefined
+          ? String(frame.index)
+          : frame.keys[frame.index];
+      frame.index += 1;
+      if (key === undefined) continue;
+
       const descriptor = Reflect.getOwnPropertyDescriptor(frame.source, key);
       if (descriptor === undefined || !("value" in descriptor)) {
         throw new Error("validated JSON data changed during sanitization");
       }
 
+      let clonedValue = descriptor.value;
+      let childFrame: CloneFrame | undefined;
+      if (typeof descriptor.value === "object" && descriptor.value !== null) {
+        const existing = clones.get(descriptor.value);
+        if (existing !== undefined) {
+          clonedValue = existing;
+        } else {
+          const nestedClone = createSanitizedContainer(descriptor.value);
+          clones.set(descriptor.value, nestedClone);
+          clonedValue = nestedClone;
+          childFrame = createCloneFrame(descriptor.value, nestedClone);
+        }
+      }
+
       const defined = Reflect.defineProperty(frame.target, key, {
         configurable: true,
         enumerable: true,
-        value: cloneValue(descriptor.value),
+        value: clonedValue,
         writable: true,
       });
       if (!defined) {
         throw new Error("could not sanitize validated JSON data");
+      }
+
+      if (childFrame !== undefined) {
+        frames.push(frame, childFrame);
+        break;
       }
     }
   }
@@ -665,14 +796,18 @@ export function preflightJsonData(
   value: unknown,
   limits?: JsonDataLimits,
 ): JsonDataPreflightResult {
-  const jsonDataIssue = findJsonDataIssue(value);
-  if (jsonDataIssue !== undefined) {
-    return { ok: false, issue: jsonDataIssue };
+  const inspection = inspectJsonData(value, ownDataMaxContainersHint(limits));
+  if (inspection.issue !== undefined) {
+    return { ok: false, issue: inspection.issue };
   }
 
   try {
     if (limits !== undefined) {
-      const resourceLimitIssue = findJsonResourceIssue(value, limits);
+      const resourceLimitIssue = findJsonResourceIssue(
+        value,
+        limits,
+        inspection.containerCount,
+      );
       if (resourceLimitIssue !== undefined) {
         return { ok: false, issue: resourceLimitIssue };
       }

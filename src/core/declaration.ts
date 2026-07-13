@@ -39,6 +39,7 @@ const amendableStatuses = new Set<DeclarationStatus>([
 const DECLARATION_JSON_LIMITS = {
   arrayLengthLimits: [{ path: ["changes"], maxLength: 10_000 }],
   maxBytes: 2 * 1024 * 1024,
+  maxContainers: 100_000,
   maxDepth: 128,
 } as const satisfies JsonDataLimits;
 
