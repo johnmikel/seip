@@ -35,12 +35,15 @@ interface VisitFrame {
   path?: string;
 }
 
-interface LeaveFrame {
-  kind: "leave";
+interface ContainerFrame {
+  index: number;
+  keys?: string[];
+  kind: "container";
+  path?: string;
   value: object;
 }
 
-type Frame = VisitFrame | LeaveFrame;
+type Frame = ContainerFrame | VisitFrame;
 
 const invalidJsonMessage = "must be JSON data" as const;
 const resourceLimitMessage = "exceeds JSON resource limits" as const;
@@ -101,13 +104,61 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
       const frame = frames.pop();
       if (frame === undefined) break;
 
-      if (frame.kind === "leave") {
-        state.set(frame.value, "visited");
+      activePath = frame.path;
+      if (frame.kind === "container") {
+        const keys = frame.keys;
+        const length =
+          keys === undefined
+            ? (frame.value as unknown[]).length
+            : keys.length;
+        let scheduledChild = false;
+        while (frame.index < length) {
+          const key =
+            keys === undefined ? String(frame.index) : keys[frame.index];
+          frame.index += 1;
+          if (key === undefined) continue;
+
+          const descriptor = Reflect.getOwnPropertyDescriptor(frame.value, key);
+          if (
+            descriptor === undefined ||
+            descriptor.enumerable !== true ||
+            !("value" in descriptor)
+          ) {
+            return issue(appendPath(frame.path, key));
+          }
+
+          const child = descriptor.value;
+          if (
+            child === null ||
+            typeof child === "string" ||
+            typeof child === "boolean"
+          ) {
+            continue;
+          }
+          if (typeof child === "number") {
+            if (!Number.isFinite(child)) {
+              return issue(appendPath(frame.path, key));
+            }
+            continue;
+          }
+          if (typeof child !== "object") {
+            return issue(appendPath(frame.path, key));
+          }
+
+          const childPath = appendPath(frame.path, key);
+          frames.push(frame, {
+            kind: "visit",
+            value: child,
+            path: childPath,
+          });
+          scheduledChild = true;
+          break;
+        }
+        if (!scheduledChild) state.set(frame.value, "visited");
         continue;
       }
 
       const { path, value: current } = frame;
-      activePath = path;
       if (
         current === null ||
         typeof current === "string" ||
@@ -126,42 +177,40 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
       if (currentState === "visiting") return issue(path);
       if (currentState === "visited") continue;
 
-      const children: VisitFrame[] = [];
       if (Array.isArray(current)) {
         if (Object.getPrototypeOf(current) !== Array.prototype) {
           return issue(path);
         }
 
         const keys = Reflect.ownKeys(current);
-        if (keys.some((key) => typeof key === "symbol")) return issue(path);
-        const indices: number[] = [];
-        const extraKeys: string[] = [];
-        for (const key of keys as string[]) {
+        let hasSymbol = false;
+        let firstExtraKey: string | undefined;
+        for (const key of keys) {
+          if (typeof key === "symbol") {
+            hasSymbol = true;
+            continue;
+          }
           if (key === "length") continue;
 
           const index = arrayIndex(key);
           if (index === undefined || index >= current.length) {
-            extraKeys.push(key);
-            continue;
-          }
-          indices.push(index);
-        }
-        if (extraKeys.length > 0) {
-          extraKeys.sort();
-          const extraKey = extraKeys[0];
-          if (extraKey !== undefined) {
-            return issue(appendPath(path, extraKey));
+            if (firstExtraKey === undefined || key < firstExtraKey) {
+              firstExtraKey = key;
+            }
           }
         }
-        indices.sort((left, right) => left - right);
+        if (hasSymbol) return issue(path);
+        if (firstExtraKey !== undefined) {
+          return issue(appendPath(path, firstExtraKey));
+        }
 
         let expectedIndex = 0;
-        for (const index of indices) {
-          if (index !== expectedIndex) {
+        for (const key of keys) {
+          if (typeof key !== "string" || key === "length") continue;
+          if (Number(key) !== expectedIndex) {
             return issue(appendPath(path, String(expectedIndex)));
           }
 
-          const key = String(index);
           const descriptor = Reflect.getOwnPropertyDescriptor(current, key);
           if (
             descriptor === undefined ||
@@ -170,16 +219,19 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
           ) {
             return issue(appendPath(path, key));
           }
-          children.push({
-            kind: "visit",
-            value: descriptor.value,
-            path: appendPath(path, key),
-          });
           expectedIndex += 1;
         }
         if (expectedIndex !== current.length) {
           return issue(appendPath(path, String(expectedIndex)));
         }
+
+        state.set(current, "visiting");
+        frames.push({
+          index: 0,
+          kind: "container",
+          ...(path === undefined ? {} : { path }),
+          value: current,
+        });
       } else {
         const prototype = Object.getPrototypeOf(current);
         if (prototype !== Object.prototype && prototype !== null) {
@@ -198,19 +250,16 @@ function findJsonDataIssue(value: unknown): JsonDataIssue | undefined {
           ) {
             return issue(appendPath(path, key));
           }
-          children.push({
-            kind: "visit",
-            value: descriptor.value,
-            path: appendPath(path, key),
-          });
         }
-      }
 
-      state.set(current, "visiting");
-      frames.push({ kind: "leave", value: current });
-      for (let index = children.length - 1; index >= 0; index -= 1) {
-        const child = children[index];
-        if (child !== undefined) frames.push(child);
+        state.set(current, "visiting");
+        frames.push({
+          index: 0,
+          keys: stringKeys,
+          kind: "container",
+          ...(path === undefined ? {} : { path }),
+          value: current,
+        });
       }
     }
   } catch {

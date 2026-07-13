@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -13,9 +14,31 @@ import {
 import { preflightJsonData } from "../../dist/core/json-data.js";
 
 const fixtures = new URL("../fixtures/v1/", import.meta.url);
+const jsonDataModuleUrl = new URL(
+  "../../dist/core/json-data.js",
+  import.meta.url,
+).href;
 
 async function loadFixture(path) {
   return JSON.parse(await readFile(new URL(path, fixtures), "utf8"));
+}
+
+function runWideJsonProbe(body) {
+  const script = `
+    import { preflightJsonData } from ${JSON.stringify(jsonDataModuleUrl)};
+    ${body}
+  `;
+  const child = spawnSync(
+    process.execPath,
+    ["--expose-gc", "--input-type=module", "--eval", script],
+    {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      timeout: 30_000,
+    },
+  );
+  assert.equal(child.status, 0, child.stderr || child.error?.message);
+  return JSON.parse(child.stdout);
 }
 
 function assertInvalid(result, code) {
@@ -291,6 +314,71 @@ test("accepts exactly 2 MiB of logical JSON and rejects one byte more", () => {
   assert.equal(preflightJsonData(value, { maxBytes }).ok, true);
   value.payload += "a";
   assertResourceIssue(preflightJsonData(value, { maxBytes }), "bytes");
+});
+
+test("bounds validity-walk memory for a wide JSON array", () => {
+  const probe = runWideJsonProbe(`
+    preflightJsonData([null], { maxBytes: 1 });
+    globalThis.keepAlive = Array(419_431).fill(null);
+    const bytes = 5 * globalThis.keepAlive.length + 1;
+    for (let index = 0; index < 3; index += 1) globalThis.gc();
+    const before = process.memoryUsage();
+    const beforeMaxRss = process.resourceUsage().maxRSS;
+    const result = preflightJsonData(globalThis.keepAlive, {
+      maxBytes: 2 * 1024 * 1024,
+    });
+    const after = process.memoryUsage();
+    const afterMaxRss = process.resourceUsage().maxRSS;
+    process.stdout.write(JSON.stringify({
+      bytes,
+      result,
+      heapDelta: Math.max(0, after.heapUsed - before.heapUsed),
+      rssDelta: Math.max(
+        0,
+        after.rss - before.rss,
+        (afterMaxRss - beforeMaxRss) * 1024,
+      ),
+    }));
+  `);
+
+  assert.equal(probe.bytes, 2_097_156);
+  assert.deepEqual(probe.result, {
+    ok: false,
+    issue: {
+      kind: "resource_limit",
+      message: "exceeds JSON resource limits",
+      resource: "bytes",
+    },
+  });
+  assert.ok(
+    probe.heapDelta < 96 * 1024 * 1024 &&
+      probe.rssDelta < 144 * 1024 * 1024,
+    `wide validity walk used ${probe.heapDelta} heap bytes and ${probe.rssDelta} RSS bytes`,
+  );
+});
+
+test("reports a late wide-array accessor before a tiny resource limit", () => {
+  const probe = runWideJsonProbe(`
+    const value = Array(419_431).fill(null);
+    value[0] = { invalid_nested_value: undefined };
+    let getterInvoked = false;
+    Object.defineProperty(value, "419430", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        getterInvoked = true;
+        return null;
+      },
+    });
+    const result = preflightJsonData(value, { maxBytes: 1 });
+    process.stdout.write(JSON.stringify({ getterInvoked, result }));
+  `);
+
+  assert.equal(probe.getterInvoked, false);
+  assert.deepEqual(probe.result, {
+    ok: false,
+    issue: { message: "must be JSON data", path: "/419430" },
+  });
 });
 
 test("validates hostile descriptors before applying resource limits", () => {
