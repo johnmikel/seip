@@ -15,6 +15,10 @@ async function loadFixture(path) {
   return JSON.parse(await readFile(new URL(path, fixtures), "utf8"));
 }
 
+function jsonContent(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function refreshChangeId(change) {
   const result = computeChangeId(change);
   assert.equal(result.ok, true);
@@ -320,10 +324,78 @@ test("validateDeclaration is total over null", () => {
 });
 
 test("accepts a schema-valid minimal declaration with exact fingerprints", () => {
-  assert.deepEqual(validateDeclaration(minimalDeclaration), {
-    ok: true,
-    value: minimalDeclaration,
-    diagnostics: [],
+  const result = validateDeclaration(minimalDeclaration);
+  assert.equal(result.ok, true);
+  assert.deepEqual(jsonContent(result.value), minimalDeclaration);
+  assert.deepEqual(result.diagnostics, []);
+});
+
+test("returns an isolated sanitized declaration graph", async (t) => {
+  const input = structuredClone(minimalDeclaration);
+  const shared = { nested: { value: "original" } };
+  input.shared_one = shared;
+  input.shared_two = shared;
+
+  const result = validateDeclaration(input);
+  assert.equal(result.ok, true);
+
+  await t.test("does not alias later input mutation", () => {
+    assert.notEqual(result.value, input);
+    assert.equal(result.value.shared_one, result.value.shared_two);
+
+    input.producer.team = "mutated-producer";
+    input.shared_one.nested.value = "mutated-extension";
+
+    assert.equal(result.value.producer.team, "orders-platform");
+    assert.equal(result.value.shared_one.nested.value, "original");
+  });
+
+  await t.test("uses null prototypes for every returned record", () => {
+    const pending = [result.value];
+    const seen = new WeakSet();
+    while (pending.length > 0) {
+      const current = pending.pop();
+      if (typeof current !== "object" || current === null || seen.has(current)) {
+        continue;
+      }
+      seen.add(current);
+      if (Array.isArray(current)) {
+        assert.equal(Object.getPrototypeOf(current), Array.prototype);
+      } else {
+        assert.equal(Object.getPrototypeOf(current), null);
+      }
+      for (const key of Reflect.ownKeys(current)) {
+        const descriptor = Reflect.getOwnPropertyDescriptor(current, key);
+        if (descriptor !== undefined && "value" in descriptor) {
+          pending.push(descriptor.value);
+        }
+      }
+    }
+  });
+
+  await t.test("does not expose later Object.prototype accessors", () => {
+    const property = "__seip_late_extension__";
+    const previous = Object.getOwnPropertyDescriptor(Object.prototype, property);
+    let getterInvoked = false;
+    try {
+      Object.defineProperty(Object.prototype, property, {
+        configurable: true,
+        get() {
+          getterInvoked = true;
+          return "inherited";
+        },
+      });
+
+      assert.equal(result.value[property], undefined);
+      assert.equal(result.value.producer[property], undefined);
+      assert.equal(getterInvoked, false);
+    } finally {
+      if (previous === undefined) {
+        delete Object.prototype[property];
+      } else {
+        Object.defineProperty(Object.prototype, property, previous);
+      }
+    }
   });
 });
 
@@ -757,11 +829,10 @@ test("aggregates and deterministically orders independent semantic diagnostics",
 test("replays a complete lifecycle including the review-escalating response exception", () => {
   const declaration = completeDeclaration();
 
-  assert.deepEqual(validateDeclaration(declaration), {
-    ok: true,
-    value: declaration,
-    diagnostics: [],
-  });
+  const result = validateDeclaration(declaration);
+  assert.equal(result.ok, true);
+  assert.deepEqual(jsonContent(result.value), declaration);
+  assert.deepEqual(result.diagnostics, []);
 });
 
 test("requires every consumer's latest current-revision response before acceptance", async (t) => {
@@ -837,6 +908,42 @@ test("requires every consumer's latest current-revision response before acceptan
     });
 
     assert.equal(validateDeclaration(declaration).ok, true);
+  });
+
+  await t.test("uses response append order when recording events cross", () => {
+    const declaration = acceptanceDeclaration({
+      decisions: [
+        { team: "analytics", decision: "ACKNOWLEDGED" },
+        { team: "analytics", decision: "OBJECTED" },
+      ],
+    });
+    const acknowledgedEvent = declaration.events[2];
+    const objectedEvent = declaration.events[3];
+    assert.equal(acknowledgedEvent.type, "CONSUMER_RESPONDED");
+    assert.equal(objectedEvent.type, "CONSUMER_RESPONDED");
+    objectedEvent.at = "2026-07-13T11:00:00Z";
+    objectedEvent.from_status = "PROPOSED";
+    objectedEvent.to_status = "UNDER_REVIEW";
+    acknowledgedEvent.at = "2026-07-13T12:00:00Z";
+    acknowledgedEvent.from_status = "UNDER_REVIEW";
+    acknowledgedEvent.to_status = "UNDER_REVIEW";
+    declaration.events.splice(
+      2,
+      2,
+      objectedEvent,
+      acknowledgedEvent,
+    );
+
+    const result = validateDeclaration(declaration);
+
+    assert.equal(result.ok, false);
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "SEIP_LIFECYCLE_ACCEPTANCE_PRECONDITION" &&
+          diagnostic.path === "/events/4/type",
+      ),
+    );
   });
 
   await t.test("does not infer acceptance from acknowledgements", () => {
@@ -1069,6 +1176,93 @@ test("compares RFC 3339 chronology by instant and permits equality", () => {
   declaration.events[1].at = "2026-07-13T10:00:00+01:00";
 
   assert.equal(validateDeclaration(declaration).ok, true);
+});
+
+test("orders leap-second instants without collapsing them into the next minute", async (t) => {
+  const withEventTimes = (first, second) => {
+    const declaration = proposedDeclaration();
+    declaration.created_at = first;
+    declaration.events[0].at = first;
+    declaration.events[1].at = second;
+    return declaration;
+  };
+  const assertChronologyFailure = (declaration) => {
+    const result = validateDeclaration(declaration);
+    assert.equal(result.ok, false);
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "SEIP_PROTOCOL_CHRONOLOGY_INVALID" &&
+          diagnostic.path === "/events/1/at",
+      ),
+    );
+  };
+
+  await t.test("rejects a whole following-minute instant before :60", () => {
+    assertChronologyFailure(
+      withEventTimes(
+        "2017-01-01T00:00:00Z",
+        "2016-12-31T23:59:60Z",
+      ),
+    );
+  });
+
+  await t.test("rejects a fractional following-minute instant before :60", () => {
+    assertChronologyFailure(
+      withEventTimes(
+        "2017-01-01T00:00:00.1Z",
+        "2016-12-31T23:59:60.9Z",
+      ),
+    );
+  });
+
+  await t.test("accepts :60 before the following whole minute", () => {
+    assert.equal(
+      validateDeclaration(
+        withEventTimes(
+          "2016-12-31T23:59:60Z",
+          "2017-01-01T00:00:00Z",
+        ),
+      ).ok,
+      true,
+    );
+  });
+
+  await t.test("accepts fractional :60 before the following minute", () => {
+    assert.equal(
+      validateDeclaration(
+        withEventTimes(
+          "2016-12-31T23:59:60.9Z",
+          "2017-01-01T00:00:00.1Z",
+        ),
+      ).ok,
+      true,
+    );
+  });
+
+  await t.test("compares offset-equivalent leap-second instants", () => {
+    assert.equal(
+      validateDeclaration(
+        withEventTimes(
+          "2016-12-31T18:59:60.9-05:00",
+          "2017-01-01T00:00:00.1Z",
+        ),
+      ).ok,
+      true,
+    );
+  });
+
+  await t.test("keeps RFC 3339 unknown local offset valid", () => {
+    assert.equal(
+      validateDeclaration(
+        withEventTimes(
+          "2016-12-31T23:59:60.9-00:00",
+          "2017-01-01T00:00:00.1Z",
+        ),
+      ).ok,
+      true,
+    );
+  });
 });
 
 test("enforces creation, chaining, transition, revision, terminal, and latest-status replay", () => {
@@ -1408,7 +1602,7 @@ test("constructs a deterministic draft with explicit effects and sorted changes"
   assert.equal(first.value.status, "DRAFT");
   assert.deepEqual(first.value.responses, []);
   assert.deepEqual(first.value.evidence, []);
-  assert.deepEqual(first.value.events, [
+  assert.deepEqual(jsonContent(first.value.events), [
     {
       event_id: context.createdEventId,
       type: "CREATED",
@@ -1424,7 +1618,7 @@ test("constructs a deterministic draft with explicit effects and sorted changes"
 
   const sorted = sortChanges(input.changes);
   assert.equal(sorted.ok, true);
-  assert.deepEqual(first.value.changes, sorted.value);
+  assert.deepEqual(jsonContent(first.value.changes), sorted.value);
 });
 
 test("preserves every supplied extensible declaration record", () => {
@@ -1435,18 +1629,59 @@ test("preserves every supplied extensible declaration record", () => {
   });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(result.value.root_extension, input.root_extension);
-  assert.deepEqual(result.value.producer, input.producer);
-  assert.deepEqual(result.value.intent, input.intent);
-  assert.deepEqual(result.value.consumers, input.consumers);
+  assert.deepEqual(jsonContent(result.value.root_extension), input.root_extension);
+  assert.deepEqual(jsonContent(result.value.producer), input.producer);
+  assert.deepEqual(jsonContent(result.value.intent), input.intent);
+  assert.deepEqual(jsonContent(result.value.consumers), input.consumers);
   for (const inputChange of input.changes) {
     const outputChange = result.value.changes.find(
       (change) => change.change_id === inputChange.change_id,
     );
     assert.ok(outputChange);
-    assert.deepEqual(outputChange.change_extension, inputChange.change_extension);
-    assert.deepEqual(outputChange.target, inputChange.target);
+    assert.deepEqual(
+      jsonContent(outputChange.change_extension),
+      inputChange.change_extension,
+    );
+    assert.deepEqual(jsonContent(outputChange.target), inputChange.target);
   }
+});
+
+test("preserves shared creation extensions without mutating their source", () => {
+  const input = createInput();
+  const shared = { nested: { value: "original" } };
+  input.shared_one = shared;
+  input.shared_two = shared;
+  input.producer.shared_extension = shared;
+
+  const result = declarationCore.createDeclaration(input, {
+    createdAt: "2026-07-13T09:00:00Z",
+    createdEventId: "evt_created_shared_extensions",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.value.shared_one, result.value.shared_two);
+  assert.equal(result.value.shared_one, result.value.producer.shared_extension);
+  assert.notEqual(result.value.shared_one, shared);
+
+  shared.nested.value = "mutated";
+  assert.equal(result.value.shared_one.nested.value, "original");
+});
+
+test("rejects oversized creation input as a protocol resource limit", () => {
+  const input = createInput();
+  input.oversized_extension = "a".repeat(2 * 1024 * 1024);
+
+  const result = declarationCore.createDeclaration(input, {
+    createdAt: "2026-07-13T09:00:00Z",
+    createdEventId: "evt_created_oversized",
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.diagnostics.every(
+      (diagnostic) => diagnostic.code === "SEIP_PROTOCOL_RESOURCE_LIMIT",
+    ),
+  );
 });
 
 test("validates the completed declaration before creation succeeds", () => {

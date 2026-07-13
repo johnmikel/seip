@@ -8,14 +8,19 @@ import { canonicalize } from "./canonicalize.js";
 import type { Diagnostic, Result } from "./diagnostics.js";
 import { computeChangeId } from "./fingerprint.js";
 import { sortChanges } from "./fingerprint.js";
-import { preflightJsonData, type JsonDataIssue } from "./json-data.js";
-import { validateProtocolSchema } from "./protocol-schema.js";
+import {
+  preflightJsonData,
+  type JsonDataIssue,
+  type JsonDataLimits,
+} from "./json-data.js";
+import { prepareProtocolSchema } from "./protocol-schema.js";
 import { validateProtocolVersion } from "./protocol-version.js";
 
 type JsonRecord = Record<string, unknown>;
 
 interface ParsedTimestamp {
   fraction: string;
+  leapSecond: boolean;
   seconds: bigint;
 }
 
@@ -31,6 +36,11 @@ const amendableStatuses = new Set<DeclarationStatus>([
   "PROPOSED",
   "UNDER_REVIEW",
 ]);
+const DECLARATION_JSON_LIMITS = {
+  arrayLengthLimits: [{ path: ["changes"], maxLength: 10_000 }],
+  maxBytes: 2 * 1024 * 1024,
+  maxDepth: 128,
+} as const satisfies JsonDataLimits;
 
 export interface CreateDeclarationInput {
   [extension: string]: unknown;
@@ -102,7 +112,6 @@ function parseTimestamp(value: string): ParsedTimestamp | undefined {
       minute * 60 +
       Math.min(second, 59),
   );
-  if (second === 60) epochSeconds += 1n;
   if (zone !== "Z" && zone !== "z") {
     const sign = match[9];
     const offsetHour = Number(match[10]);
@@ -118,7 +127,11 @@ function parseTimestamp(value: string): ParsedTimestamp | undefined {
     epochSeconds += sign === "+" ? -offsetSeconds : offsetSeconds;
   }
 
-  return { seconds: epochSeconds, fraction: match[7] ?? "" };
+  return {
+    seconds: epochSeconds,
+    fraction: match[7] ?? "",
+    leapSecond: second === 60,
+  };
 }
 
 function compareTimestamps(left: string, right: string): number {
@@ -127,6 +140,9 @@ function compareTimestamps(left: string, right: string): number {
   if (leftParsed === undefined || rightParsed === undefined) return 0;
   if (leftParsed.seconds < rightParsed.seconds) return -1;
   if (leftParsed.seconds > rightParsed.seconds) return 1;
+  if (leftParsed.leapSecond !== rightParsed.leapSecond) {
+    return leftParsed.leapSecond ? 1 : -1;
+  }
 
   const fractionLength = Math.max(
     leftParsed.fraction.length,
@@ -707,11 +723,17 @@ function appendEventReplayDiagnostics(
     declaration.consumers.map((consumer) => consumer.team),
   );
   const responsesById = new Map(
-    declaration.responses.map((response) => [response.response_id, response]),
+    declaration.responses.map((response, index) => [
+      response.response_id,
+      { index, response },
+    ]),
   );
-  const latestDecisions = new Map<
+  const latestResponses = new Map<
     string,
-    SeipDeclaration["responses"][number]["decision"]
+    {
+      decision: SeipDeclaration["responses"][number]["decision"];
+      index: number;
+    }
   >();
   let replayRevision = 1;
   if (events.length === 0) {
@@ -728,7 +750,7 @@ function appendEventReplayDiagnostics(
   events.forEach((current, index) => {
     if (current.type === "DECLARATION_UPDATED") {
       updateCount += 1;
-      latestDecisions.clear();
+      latestResponses.clear();
     }
 
     if (index === 0) {
@@ -822,22 +844,30 @@ function appendEventReplayDiagnostics(
     if (current.type === "DECLARATION_UPDATED" && hasExpectedRevision) {
       replayRevision = current.declaration_revision;
     } else if (current.type === "CONSUMER_RESPONDED") {
-      const response = responsesById.get(current.details.response_id);
+      const responseEntry = responsesById.get(current.details.response_id);
+      const response = responseEntry?.response;
       if (
         response !== undefined &&
+        responseEntry !== undefined &&
         current.declaration_revision === replayRevision &&
         response.declaration_revision === current.declaration_revision &&
         response.team === current.details.team &&
         response.decision === current.details.decision &&
         consumerTeams.has(response.team)
       ) {
-        latestDecisions.set(response.team, response.decision);
+        const latest = latestResponses.get(response.team);
+        if (latest === undefined || responseEntry.index > latest.index) {
+          latestResponses.set(response.team, {
+            decision: response.decision,
+            index: responseEntry.index,
+          });
+        }
       }
     } else if (
       current.type === "ACCEPTED" &&
       declaration.consumers.some(
         (consumer) =>
-          latestDecisions.get(consumer.team) !== "ACKNOWLEDGED",
+          latestResponses.get(consumer.team)?.decision !== "ACKNOWLEDGED",
       )
     ) {
       appendEventDiagnostic(
@@ -1046,22 +1076,16 @@ function appendRecordingLinkDiagnostics(
 }
 
 export function validateDeclaration(value: unknown): Result<SeipDeclaration> {
-  const schemaResult = validateProtocolSchema(value);
-  if (!schemaResult.ok) {
-    return { ok: false, diagnostics: schemaResult.diagnostics };
-  }
-
-  const semanticPreflight = preflightJsonData(value);
-  if (!semanticPreflight.ok) {
-    return invalidCreationData(
-      semanticPreflight.issue.message,
-      semanticPreflight.issue,
-    );
+  const prepared = prepareProtocolSchema(value, {
+    limits: DECLARATION_JSON_LIMITS,
+  });
+  if (!prepared.ok) {
+    return { ok: false, diagnostics: prepared.diagnostics };
   }
 
   // Semantic reads operate on the sanitized clone so inherited accessors on
   // otherwise ordinary input objects can never execute after schema preflight.
-  const declaration = semanticPreflight.value as SeipDeclaration;
+  const declaration = prepared.value as SeipDeclaration;
   const diagnostics: Diagnostic[] = [];
 
   const versionResult = validateProtocolVersion(declaration.protocol_version);
@@ -1105,7 +1129,7 @@ export function validateDeclaration(value: unknown): Result<SeipDeclaration> {
 
   return {
     ok: true,
-    value: value as SeipDeclaration,
+    value: declaration,
     diagnostics: [],
   };
 }
@@ -1115,6 +1139,7 @@ function invalidCreationData(
   issue?: JsonDataIssue,
   pathPrefix = "",
 ): Result<never> {
+  const resourceLimited = issue !== undefined && "kind" in issue;
   const issuePath = issue?.path;
   const path =
     issuePath === undefined
@@ -1124,9 +1149,13 @@ function invalidCreationData(
     ok: false,
     diagnostics: [
       {
-        code: "SEIP_PROTOCOL_SCHEMA_INVALID",
+        code: resourceLimited
+          ? "SEIP_PROTOCOL_RESOURCE_LIMIT"
+          : "SEIP_PROTOCOL_SCHEMA_INVALID",
         severity: "error",
-        message,
+        message: resourceLimited
+          ? "Declaration exceeds configured protocol resource limits."
+          : message,
         ...(path === undefined ? {} : { path }),
       },
     ],
@@ -1137,11 +1166,11 @@ export function createDeclaration(
   input: CreateDeclarationInput,
   context: CreationContext,
 ): Result<SeipDeclaration> {
-  const inputPreflight = preflightJsonData(input);
+  const inputPreflight = preflightJsonData(input, DECLARATION_JSON_LIMITS);
   if (!inputPreflight.ok) {
     return invalidCreationData(inputPreflight.issue.message, inputPreflight.issue);
   }
-  const contextPreflight = preflightJsonData(context);
+  const contextPreflight = preflightJsonData(context, DECLARATION_JSON_LIMITS);
   if (!contextPreflight.ok) {
     return invalidCreationData(
       contextPreflight.issue.message,
@@ -1160,14 +1189,8 @@ export function createDeclaration(
     );
   }
 
-  let source: JsonRecord;
-  let effects: JsonRecord;
-  try {
-    source = structuredClone(inputPreflight.value) as JsonRecord;
-    effects = structuredClone(contextPreflight.value) as JsonRecord;
-  } catch {
-    return invalidCreationData("Creation data must be safely cloneable JSON data.");
-  }
+  const source = inputPreflight.value;
+  const effects = contextPreflight.value;
 
   const extensions = { ...source };
   for (const managedOrKnownField of [

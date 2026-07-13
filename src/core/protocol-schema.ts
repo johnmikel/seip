@@ -2,7 +2,11 @@ import { URL } from "node:url";
 
 import amendmentValidatorModule from "../generated/amendment-validator.cjs";
 import protocolValidatorModule from "../generated/protocol-validator.cjs";
-import { preflightJsonData } from "./json-data.js";
+import {
+  preflightJsonData,
+  type JsonDataIssue,
+  type JsonDataLimits,
+} from "./json-data.js";
 
 export interface SchemaValidationResult {
   ok: boolean;
@@ -14,6 +18,29 @@ export interface SchemaValidationResult {
     message: string;
     path?: string;
   }>;
+}
+
+export type PreparedProtocolSchemaResult =
+  | {
+      ok: true;
+      value: unknown;
+      diagnostics: [];
+    }
+  | {
+      ok: false;
+      diagnostics: Array<
+        | SchemaValidationResult["diagnostics"][number]
+        | {
+            code: "SEIP_PROTOCOL_RESOURCE_LIMIT";
+            severity: "error";
+            message: string;
+            path?: string;
+          }
+      >;
+    };
+
+export interface ProtocolPreparationOptions {
+  limits?: JsonDataLimits;
 }
 
 interface ValidatorError {
@@ -441,28 +468,60 @@ function validateAmendmentSemantics(
   return diagnostics;
 }
 
-function validateWith(
+function schemaPreflightFailure(
+  issue: JsonDataIssue,
+  code: DiagnosticCode,
+): SchemaValidationResult {
+  return {
+    ok: false,
+    diagnostics: [
+      {
+        code,
+        severity: "error",
+        message: issue.message,
+        ...(issue.path === undefined ? {} : { path: issue.path }),
+      },
+    ],
+  };
+}
+
+function preparationFailure(
+  issue: JsonDataIssue,
+  code: DiagnosticCode,
+): Extract<PreparedProtocolSchemaResult, { ok: false }> {
+  if ("kind" in issue && issue.kind === "resource_limit") {
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          code: "SEIP_PROTOCOL_RESOURCE_LIMIT",
+          severity: "error",
+          message: "Declaration exceeds configured protocol resource limits.",
+          ...(issue.path === undefined ? {} : { path: issue.path }),
+        },
+      ],
+    };
+  }
+  return {
+    ok: false,
+    diagnostics: [
+      {
+        code,
+        severity: "error",
+        message: issue.message,
+        ...(issue.path === undefined ? {} : { path: issue.path }),
+      },
+    ],
+  };
+}
+
+function validatePreparedWith(
   validator: GeneratedValidator,
-  value: unknown,
+  sanitizedValue: unknown,
   code: DiagnosticCode,
   validateSemantics?: SemanticValidator,
 ): SchemaValidationResult {
   try {
-    const preflight = preflightJsonData(value);
-    if (!preflight.ok) {
-      return {
-        ok: false,
-        diagnostics: [
-          {
-            code,
-            severity: "error",
-            ...preflight.issue,
-          },
-        ],
-      };
-    }
-    const sanitizedValue = preflight.value;
-
     if (validator(sanitizedValue)) {
       const diagnostics = normalizeDiagnostics(
         validateSemantics?.(sanitizedValue, code) ?? [],
@@ -520,6 +579,52 @@ function validateWith(
       ],
     };
   }
+}
+
+function validateWith(
+  validator: GeneratedValidator,
+  value: unknown,
+  code: DiagnosticCode,
+  validateSemantics?: SemanticValidator,
+): SchemaValidationResult {
+  const preflight = preflightJsonData(value);
+  if (!preflight.ok) return schemaPreflightFailure(preflight.issue, code);
+  return validatePreparedWith(
+    validator,
+    preflight.value,
+    code,
+    validateSemantics,
+  );
+}
+
+/**
+ * @internal Deep-import preparation path. It owns sanitization; callers must
+ * not bypass this function with an allegedly prepared JavaScript value.
+ */
+export function prepareProtocolSchema(
+  value: unknown,
+  options: ProtocolPreparationOptions = {},
+): PreparedProtocolSchemaResult {
+  const preflight = preflightJsonData(value, options.limits);
+  if (!preflight.ok) {
+    return preparationFailure(
+      preflight.issue,
+      "SEIP_PROTOCOL_SCHEMA_INVALID",
+    );
+  }
+
+  const sanitizedValue = preflight.value;
+
+  const validation = validatePreparedWith(
+    protocolValidator,
+    sanitizedValue,
+    "SEIP_PROTOCOL_SCHEMA_INVALID",
+    validateProtocolSemantics,
+  );
+  if (!validation.ok) {
+    return { ok: false, diagnostics: validation.diagnostics };
+  }
+  return { ok: true, value: sanitizedValue, diagnostics: [] };
 }
 
 export function validateProtocolSchema(

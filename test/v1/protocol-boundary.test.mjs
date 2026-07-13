@@ -6,6 +6,10 @@ import {
   validateAmendmentSchema,
   validateProtocolSchema,
 } from "../../dist/core/protocol-schema.js";
+import {
+  computeChangeId,
+  validateDeclaration,
+} from "../../dist/core/index.js";
 import { preflightJsonData } from "../../dist/core/json-data.js";
 
 const fixtures = new URL("../fixtures/v1/", import.meta.url);
@@ -31,6 +35,36 @@ function assertJsonBoundaryFailure(result, code, path) {
       ...(path === undefined ? {} : { path }),
     },
   ]);
+}
+
+function assertResourceIssue(result, resource) {
+  assert.equal(result.ok, false);
+  assert.equal(result.issue.kind, "resource_limit");
+  assert.equal(result.issue.resource, resource);
+}
+
+function assertDeclarationResourceFailure(result) {
+  assert.equal(result.ok, false);
+  assert.ok(result.diagnostics.length > 0);
+  assert.ok(
+    result.diagnostics.every(
+      (diagnostic) => diagnostic.code === "SEIP_PROTOCOL_RESOURCE_LIMIT",
+    ),
+  );
+}
+
+function nestedArrays(depth) {
+  let value = null;
+  for (let index = 0; index < depth; index += 1) value = [value];
+  return value;
+}
+
+function refreshDeclarationChangeIds(declaration) {
+  for (const change of declaration.changes) {
+    const result = computeChangeId(change);
+    assert.equal(result.ok, true);
+    change.change_id = result.value;
+  }
 }
 
 function assertCredentialQueryRejected(result, label) {
@@ -216,6 +250,129 @@ test("accepts dense JSON data, null prototypes, and acyclic sharing", async () =
     assert.equal(Object.getPrototypeOf(preflight.value), null);
     assert.equal(preflight.value.shared_one, preflight.value.shared_two);
   }
+});
+
+test("enforces exact optional JSON depth limits before cloning", () => {
+  assert.equal(
+    preflightJsonData(nestedArrays(128), { maxDepth: 128 }).ok,
+    true,
+  );
+  assertResourceIssue(
+    preflightJsonData(nestedArrays(129), { maxDepth: 128 }),
+    "depth",
+  );
+});
+
+test("counts exact compact JSON UTF-8 bytes including escaping and DAG unfolding", () => {
+  const shared = {
+    "é😀\ud800": "quote: \" slash: \\ newline:\n",
+  };
+  const values = [shared, [shared, shared]];
+
+  for (const value of values) {
+    const exactBytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+    assert.equal(
+      preflightJsonData(value, { maxBytes: exactBytes }).ok,
+      true,
+    );
+    assertResourceIssue(
+      preflightJsonData(value, { maxBytes: exactBytes - 1 }),
+      "bytes",
+    );
+  }
+});
+
+test("accepts exactly 2 MiB of logical JSON and rejects one byte more", () => {
+  const maxBytes = 2 * 1024 * 1024;
+  const value = { payload: "" };
+  const emptyBytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+  value.payload = "a".repeat(maxBytes - emptyBytes);
+
+  assert.equal(preflightJsonData(value, { maxBytes }).ok, true);
+  value.payload += "a";
+  assertResourceIssue(preflightJsonData(value, { maxBytes }), "bytes");
+});
+
+test("validates hostile descriptors before applying resource limits", () => {
+  let getterInvoked = false;
+  const accessor = {};
+  Object.defineProperty(accessor, "payload", {
+    enumerable: true,
+    get() {
+      getterInvoked = true;
+      throw new Error("must not execute");
+    },
+  });
+
+  const result = preflightJsonData(accessor, { maxBytes: 1, maxDepth: 1 });
+
+  assert.deepEqual(result, {
+    ok: false,
+    issue: { message: "must be JSON data", path: "/payload" },
+  });
+  assert.equal(getterInvoked, false);
+});
+
+test("bounds declaration depth and logical size without changing direct schema validation", async () => {
+  const declaration = await loadFixture("valid/minimal-declaration.json");
+  refreshDeclarationChangeIds(declaration);
+
+  const atDepth = structuredClone(declaration);
+  atDepth.depth_extension = nestedArrays(127);
+  assert.equal(validateDeclaration(atDepth).ok, true);
+
+  const overDepth = structuredClone(declaration);
+  overDepth.depth_extension = nestedArrays(128);
+  assertResourceIssue(
+    preflightJsonData(overDepth, { maxDepth: 128 }),
+    "depth",
+  );
+  assertDeclarationResourceFailure(validateDeclaration(overDepth));
+  assert.deepEqual(validateProtocolSchema(overDepth), {
+    ok: true,
+    diagnostics: [],
+  });
+
+  const maxBytes = 2 * 1024 * 1024;
+  const atSize = structuredClone(declaration);
+  atSize.size_extension = "";
+  const baseBytes = Buffer.byteLength(JSON.stringify(atSize), "utf8");
+  atSize.size_extension = "a".repeat(maxBytes - baseBytes);
+  assert.equal(validateDeclaration(atSize).ok, true);
+
+  const overSize = structuredClone(atSize);
+  overSize.size_extension += "a";
+  assertDeclarationResourceFailure(validateDeclaration(overSize));
+});
+
+test("short-circuits oversized change collections as resources", async () => {
+  const declaration = await loadFixture("valid/minimal-declaration.json");
+  refreshDeclarationChangeIds(declaration);
+
+  const atLimit = structuredClone(declaration);
+  atLimit.changes = Array(10_000).fill(null);
+  const atLimitResult = validateDeclaration(atLimit);
+  assert.equal(atLimitResult.ok, false);
+  assert.ok(
+    atLimitResult.diagnostics.every(
+      (diagnostic) => diagnostic.code !== "SEIP_PROTOCOL_RESOURCE_LIMIT",
+    ),
+  );
+
+  const tooManyChanges = structuredClone(declaration);
+  tooManyChanges.changes = Array(10_001).fill(null);
+  const overLimitResult = validateDeclaration(tooManyChanges);
+  assertDeclarationResourceFailure(overLimitResult);
+  assert.equal(overLimitResult.diagnostics[0].path, "/changes");
+});
+
+test("fails a 50k-event declaration as a resource before cloning", async () => {
+  const declaration = await loadFixture("valid/minimal-declaration.json");
+  refreshDeclarationChangeIds(declaration);
+
+  const tooManyEvents = structuredClone(declaration);
+  tooManyEvents.events = Array(50_000).fill(tooManyEvents.events[0]);
+  assertDeclarationResourceFailure(validateDeclaration(tooManyEvents));
 });
 
 test("does not invoke inherited prototype accessors after preflight", async () => {
