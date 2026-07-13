@@ -1,6 +1,7 @@
 export { normalizeDecimalLexeme } from "./canonical-value.js";
 export type { CanonicalValue } from "./canonical-value.js";
 export { canonicalize } from "./canonicalize.js";
+export * from "./declaration.js";
 export * from "./diagnostics.js";
 export { computeChangeId, sortChanges } from "./fingerprint.js";
 export type {
