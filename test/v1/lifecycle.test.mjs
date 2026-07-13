@@ -516,6 +516,106 @@ test("rejects closed, no-op, and invalid consumer amendments", () => {
   }
 });
 
+function consumerAdditions(count, offset = 0) {
+  return Array.from({ length: count }, (_, index) => ({
+    team: `consumer-${String(index + offset).padStart(5, "0")}`,
+  }));
+}
+
+function consumerUpdates(count, offset = 0) {
+  return Array.from({ length: count }, (_, index) => ({
+    team: `consumer-${String(index + offset).padStart(5, "0")}`,
+    contact: "updated@example.com",
+  }));
+}
+
+test("accepts exactly 10,000 consumer amendment operations", () => {
+  const draft = structuredClone(source);
+  const before = structuredClone(draft);
+  const patch = { consumers: { add: consumerAdditions(10_000) } };
+  const patchBefore = structuredClone(patch);
+  const ctx = context("DRAFT", "amend_consumer_limit_boundary");
+  const contextBefore = structuredClone(ctx);
+  let result;
+
+  assert.doesNotThrow(() => {
+    result = amendDeclaration(
+      draft,
+      patch,
+      "Add the bounded consumer set",
+      ctx,
+    );
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.value.consumers.length, source.consumers.length + 10_000);
+  assert.equal(result.value.events.at(-1).details.changed_paths.length, 10_000);
+  assert.deepEqual(draft, before);
+  assert.deepEqual(patch, patchBefore);
+  assert.deepEqual(ctx, contextBefore);
+});
+
+test("rejects oversized consumer amendment work before schema validation", () => {
+  const cases = [
+    {
+      label: "add",
+      patch: { consumers: { add: consumerAdditions(10_001) } },
+      path: "/patch/consumers/add",
+    },
+    {
+      label: "update",
+      patch: { consumers: { update: consumerUpdates(10_001) } },
+      path: "/patch/consumers/update",
+    },
+    {
+      label: "combined add and update",
+      patch: {
+        consumers: {
+          add: consumerAdditions(5_000),
+          update: consumerUpdates(5_001, 5_000),
+        },
+      },
+      path: "/patch/consumers",
+    },
+  ];
+
+  for (const { label, patch, path } of cases) {
+    const draft = structuredClone(source);
+    const before = structuredClone(draft);
+    const patchBefore = structuredClone(patch);
+    const ctx = context("DRAFT", `amend_consumer_limit_${label.replaceAll(" ", "_")}`);
+    const contextBefore = structuredClone(ctx);
+    let result;
+
+    assert.doesNotThrow(() => {
+      result = amendDeclaration(
+        draft,
+        patch,
+        "Reject excessive consumer amendment work",
+        ctx,
+      );
+    }, label);
+
+    assert.equal(result.ok, false, label);
+    assert.deepEqual(
+      result.diagnostics,
+      [
+        {
+          path,
+          declarationId: source.declaration_id,
+          code: "SEIP_PROTOCOL_RESOURCE_LIMIT",
+          severity: "error",
+          message: "exceeds JSON resource limits",
+        },
+      ],
+      label,
+    );
+    assert.deepEqual(draft, before, `${label} mutated declaration`);
+    assert.deepEqual(patch, patchBefore, `${label} mutated patch`);
+    assert.deepEqual(ctx, contextBefore, `${label} mutated context`);
+  }
+});
+
 test("uses RFC 7396 merge semantics and canonical escaped paths", () => {
   const draft = structuredClone(source);
   draft.consumers = [

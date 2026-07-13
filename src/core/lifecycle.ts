@@ -73,6 +73,20 @@ const lifecycleInputLimits = {
   maxContainers: 100_000,
   maxDepth: 128,
 } as const satisfies JsonDataLimits;
+const MAX_CONSUMER_AMENDMENT_OPERATIONS = 10_000;
+const amendmentPatchLimits = {
+  ...lifecycleInputLimits,
+  arrayLengthLimits: [
+    {
+      path: ["consumers", "add"],
+      maxLength: MAX_CONSUMER_AMENDMENT_OPERATIONS,
+    },
+    {
+      path: ["consumers", "update"],
+      maxLength: MAX_CONSUMER_AMENDMENT_OPERATIONS,
+    },
+  ],
+} as const satisfies JsonDataLimits;
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -436,20 +450,61 @@ function amendmentFailure(
   );
 }
 
+function amendmentResourceFailure(
+  declaration: SeipDeclaration,
+  path: string,
+): Result<never> {
+  return lifecycleFailure(
+    "SEIP_PROTOCOL_RESOURCE_LIMIT",
+    "exceeds JSON resource limits",
+    declaration,
+    path,
+  );
+}
+
 function prepareAmendmentPatch(
   declaration: SeipDeclaration,
   patch: unknown,
 ): Result<AmendmentPatch> {
-  const prepared = preflightJsonData(patch, lifecycleInputLimits);
-  if (!prepared.ok || !isRecord(prepared.value)) {
+  const prepared = preflightJsonData(patch, amendmentPatchLimits);
+  if (!prepared.ok) {
+    const path =
+      prepared.issue.path === undefined
+        ? "/patch"
+        : `/patch${prepared.issue.path}`;
+    if ("kind" in prepared.issue && prepared.issue.kind === "resource_limit") {
+      return amendmentResourceFailure(declaration, path);
+    }
     return amendmentFailure(
       declaration,
-      prepared.ok ? "Amendment patch must be a JSON object." : prepared.issue.message,
-      prepared.ok || prepared.issue.path === undefined
-        ? "/patch"
-        : `/patch${prepared.issue.path}`,
+      prepared.issue.message,
+      path,
     );
   }
+  if (!isRecord(prepared.value)) {
+    return amendmentFailure(
+      declaration,
+      "Amendment patch must be a JSON object.",
+      "/patch",
+    );
+  }
+
+  const consumers = prepared.value.consumers;
+  if (isRecord(consumers)) {
+    const additionCount = Array.isArray(consumers.add)
+      ? consumers.add.length
+      : 0;
+    const updateCount = Array.isArray(consumers.update)
+      ? consumers.update.length
+      : 0;
+    if (
+      additionCount + updateCount >
+      MAX_CONSUMER_AMENDMENT_OPERATIONS
+    ) {
+      return amendmentResourceFailure(declaration, "/patch/consumers");
+    }
+  }
+
   const schema = validateAmendmentSchema(prepared.value);
   if (!schema.ok) {
     return {
