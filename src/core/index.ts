@@ -10,4 +10,5 @@ export type {
   NormalizedSnapshotValue,
   PathSegment,
 } from "./fingerprint.js";
+export * from "./policy.js";
 export * from "./protocol-version.js";

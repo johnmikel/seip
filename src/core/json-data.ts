@@ -213,7 +213,10 @@ function inspectJsonData(
             continue;
           }
           if (typeof child === "number") {
-            if (!Number.isFinite(child)) {
+            if (
+              !Number.isFinite(child) ||
+              (Number.isInteger(child) && !Number.isSafeInteger(child))
+            ) {
               return invalid(appendPath(frame.path, key));
             }
             continue;
@@ -247,7 +250,12 @@ function inspectJsonData(
         continue;
       }
       if (typeof current === "number") {
-        if (!Number.isFinite(current)) return invalid(path);
+        if (
+          !Number.isFinite(current) ||
+          (Number.isInteger(current) && !Number.isSafeInteger(current))
+        ) {
+          return invalid(path);
+        }
         continue;
       }
       if (typeof current !== "object") return invalid(path);

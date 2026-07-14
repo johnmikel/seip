@@ -258,6 +258,20 @@ test("accepts only reflection-safe JSON data before schema validation", async ()
   );
 });
 
+test("rejects unsafe integers at scalar and nested JSON boundaries", () => {
+  assert.deepEqual(preflightJsonData(Number.MAX_SAFE_INTEGER + 1), {
+    ok: false,
+    issue: { message: "must be JSON data" },
+  });
+  assert.deepEqual(
+    preflightJsonData({ nested: Number.MIN_SAFE_INTEGER - 1 }),
+    {
+      ok: false,
+      issue: { message: "must be JSON data", path: "/nested" },
+    },
+  );
+});
+
 test("accepts dense JSON data, null prototypes, and acyclic sharing", async () => {
   const declaration = await loadFixture("valid/extended-declaration.json");
   const shared = { nested: [null, true, "text", 42] };
