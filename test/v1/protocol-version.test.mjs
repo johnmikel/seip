@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  failure,
-  validateProtocolVersion,
-} from "../../dist/core/index.js";
+import { failure } from "../../dist/core/diagnostics.js";
+import { validateProtocolVersion } from "../../dist/core/index.js";
 
 const invalidResult = {
   ok: false,

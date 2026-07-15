@@ -4,7 +4,16 @@
   "description": "Schema Evolution Intent Protocol — communicate breaking schema changes before they break things.",
   "type": "module",
   "bin": { "seip": "./bin/seip.mjs" },
-  "main": "src/index.mjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schema": "./seip.schema.json",
+    "./legacy": "./src/index.mjs"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -22,7 +31,18 @@
   "keywords": ["seip", "schema", "evolution", "data-contracts", "migration", "breaking-changes"],
   "author": "John Mikel Regida",
   "license": "Apache-2.0",
-  "files": ["bin/", "src/", "examples/", "action.yml", "README.md", "SPEC.md", "THIRD_PARTY_NOTICES.md", "seip.schema.json", "seip.amendment.schema.json"],
+  "files": [
+    "bin/",
+    "dist/",
+    "src/index.mjs",
+    "src/notify.js",
+    "examples/",
+    "action.yml",
+    "README.md",
+    "SPEC.md",
+    "THIRD_PARTY_NOTICES.md",
+    "seip.schema.json"
+  ],
   "devDependencies": {
     "@types/node": "20.19.43",
     "ajv": "8.20.0",

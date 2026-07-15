@@ -50,12 +50,13 @@ test("package includes exact notices for bundled validator code", async () => {
     [packed.stdout, packed.stderr].filter(Boolean).join("\n"),
   );
   const manifest = JSON.parse(packed.stdout)[0];
+  assert.ok(manifest.files.some((file) => file.path === "LICENSE"));
   assert.ok(
     manifest.files.some((file) => file.path === "THIRD_PARTY_NOTICES.md"),
   );
   for (const path of [
-    "src/generated/protocol-validator.cjs",
-    "src/generated/amendment-validator.cjs",
+    "dist/generated/protocol-validator.cjs",
+    "dist/generated/amendment-validator.cjs",
   ]) {
     assert.ok(manifest.files.some((file) => file.path === path), path);
   }

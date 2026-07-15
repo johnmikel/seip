@@ -391,7 +391,7 @@ Update `package.json` scripts to include:
   "build": "tsc -p tsconfig.json",
   "pretest": "npm run build",
   "test": "node --test",
-  "test:v1": "npm run build && node --test test/v1"
+  "test:v1": "npm run build && node --test test/v1/*.test.mjs"
 }
 ```
 
@@ -1289,7 +1289,7 @@ Run:
 ```bash
 npm run generate
 npm run build
-node --test test/v1
+node --test test/v1/*.test.mjs
 npm test
 npm pack --dry-run
 pack_dir=$(mktemp -d)

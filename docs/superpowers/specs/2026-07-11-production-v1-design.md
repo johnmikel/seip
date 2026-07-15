@@ -456,6 +456,8 @@ For each `(team, validator, change_id)` tuple, the last append-ordered evidence 
 
 Evidence policy is configured as `none`, `all_consumers`, or `selected`, with optional selected teams and required validator IDs. The default coordinated preset does not require machine evidence unless configured, but acknowledgement and history requirements still apply.
 
+When `required_validator_ids` is omitted or empty, every required team and declared change must have a passing result from at least one trusted validator. The satisfying validator may differ for each team-and-change pair.
+
 Completed declarations may cover the exact change they coordinated, such as the final removal of a deprecated field. They cannot cover a later retype or removal with a different before/after snapshot because its fingerprint differs.
 
 Coverage precedence is deterministic. For a current `change_id`, if any nonterminal declaration references it, only those active declarations are considered; completed declarations are historical and cannot mask an incomplete new coordination attempt. More than one active declaration is `SEIP_POLICY_AMBIGUOUS_COVERAGE`. If exactly one active declaration exists but is not eligible under the selected preset, policy fails on that declaration. Only when no active declaration references the change may an exact completed declaration provide coverage. Multiple completed historical matches are equivalent; the result reports the one with the latest valid `COMPLETED` event and lists the others as informational history. Withdrawn and rejected declarations never provide coverage.
@@ -485,6 +487,8 @@ rejectDeclaration(declaration, reason, actor): TransitionResult
 ```
 
 Expected invalid data, policy failures, and invalid transitions return structured diagnostics and never partially mutate input. Programmer errors and effect-layer failures use a typed `SeipError` with stable `code`, message, safe context, and optional cause.
+
+For policy results, `ok` is true exactly when `decision` is `pass`; both `fail` and `error` set `ok` to false.
 
 The Node file-store API is asynchronous and requires an explicit root. The pure core never reads `process.cwd()`, environment variables, or global configuration.
 
